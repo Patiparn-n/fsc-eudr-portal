@@ -1132,7 +1132,7 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                 <${Icon} name="info" className="icon-sm" />
                                 ${form.geoType === 'polygon'
                                     ? html`แปลง <b>${form.areaRai} ไร่</b> ≥ 25 ไร่ → ต้องวาดเส้นล้อมรอบ <b>Polygon</b> อย่างน้อย 3 จุด (คลิกบนแผนที่เพื่อเพิ่มจุด ยิ่งมากจุด ยิ่งแม่นยำ)`
-                                    : html`แปลง <b>${form.areaRai} ไร่</b> < 25 ไร่ → ใช้ <b>Point</b> คลิก 1 จุดที่กึ่งกลางแปลง`
+                                    : html`แปลง <b>${form.areaRai} ไร่</b> (น้อยกว่า 25 ไร่) → ใช้ <b>Point</b> คลิก 1 จุดที่กึ่งกลางแปลง`
                                 }
                             </p>
 
