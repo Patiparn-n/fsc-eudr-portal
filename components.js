@@ -591,7 +591,8 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
             fscSTD7: true, // No conflict timber
             docAttachmentDeed: false,
             docAttachmentOwnerID: false,
-            docAttachmentSaleContract: false
+            docAttachmentSaleContract: false,
+            yieldEvidenceNote: ''
         };
 
     const [form, setForm] = useState({ ...defaultPlantation });
@@ -600,47 +601,59 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         const val = type === 'checkbox' ? checked : value;
-        
+
         let updatedForm = { ...form, [name]: val };
-        
+
         // Auto calculate area in Hectares when Rai changes
         if (name === 'areaRai') {
             const rai = parseFloat(value) || 0;
             const hec = parseFloat((rai / 6.25).toFixed(2));
             updatedForm.areaHectares = hec;
-            
-            // Auto swap EUDR Geolocation type based on Hectares
-            // EUDR rule: Plot <= 4 hectares -> Point, Plot > 4 hectares -> Polygon
-            if (hec > 4 && form.geoType === 'point') {
-                updatedForm.geoType = 'polygon';
-                updatedForm.coords = [];
-            } else if (hec <= 4 && form.geoType === 'polygon') {
-                updatedForm.geoType = 'point';
-                updatedForm.coords = null;
+
+            // ── FIX: กำหนด geoType จากพื้นที่ที่กรอก แต่ไม่ล้าง coords
+            //    หากยังไม่มี coords จะตั้งค่า geoType และ coords ตาม threshold
+            //    หากวาดพิกัดไปแล้ว จะแสดง warning เท่านั้น (ไม่ล้าง)
+            const alreadyDrawn = form.geoType === 'point'
+                ? !!(form.coords && form.coords.lat)
+                : (Array.isArray(form.coords) && form.coords.length > 0);
+
+            if (!alreadyDrawn) {
+                // ≥ 25 ไร่ (> 4 ฮก.) → Polygon,  < 25 ไร่ → Point
+                updatedForm.geoType = hec > 4 ? 'polygon' : 'point';
+                updatedForm.coords = hec > 4 ? [] : null;
             }
+            // ถ้าวาดแล้ว ปล่อยให้ geoType และ coords คงเดิม
+            // (แสดง mismatch warning ใน UI แทน)
         }
 
         setForm(updatedForm);
     };
 
     // Callback for Map coordinate edits — auto-calculate polygon area
+    // ไม่เปลี่ยน geoType ใน callback นี้ เพื่อป้องกันการ re-init แผนที่
     const handleMapCoordsChange = (newCoords) => {
         setForm(prev => {
-            let update = { ...prev, coords: newCoords };
+            const update = { ...prev, coords: newCoords };
+            // คำนวณพื้นที่เฉพาะเมื่อเป็น polygon และมี ≥ 3 จุด
             if (prev.geoType === 'polygon' && Array.isArray(newCoords) && newCoords.length >= 3) {
                 const calcHa = calcPolygonAreaHa(newCoords);
-                const calcRai = parseFloat((calcHa * 6.25).toFixed(2));
                 update.areaHectares = calcHa;
-                update.areaRai = calcRai;
+                update.areaRai = parseFloat((calcHa * 6.25).toFixed(2));
+                // ไม่แตะ geoType เพื่อป้องกัน InteractiveMap re-init
             }
             return update;
         });
     };
 
     // Calculate dynamic values
-    const treeAgeMonths = form.plantDate 
+    const treeAgeMonths = form.plantDate
         ? Math.floor((new Date() - new Date(form.plantDate)) / (1000 * 60 * 60 * 24 * 30))
         : 0;
+
+    // ── ระบบตรวจสอบปริมาณผลผลิตคาดการณ์ ──────────────────────────
+    const yieldPerRai = form.areaRai > 0 ? (parseFloat(form.estVolume) / parseFloat(form.areaRai)) : 0;
+    // กรณีอายุต่ำกว่า 4 ปี (48 เดือน) ผลผลิตสูงสุดไม่ควรเกิน 25 ตัน/ไร่
+    const isYoungHighYield = treeAgeMonths > 0 && treeAgeMonths < 48 && yieldPerRai > 25;
 
     // FSC Controlled Wood Risk Assessment Calculation (7 categories)
     const isFscCwPass = form.fscSTD1 && form.fscSTD2 && form.fscSTD3 && form.fscSTD4 && form.fscSTD5 && form.fscSTD6 && form.fscSTD7;
@@ -669,9 +682,19 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
         if (!hasCoordinates) {
             alert(
                 'กรุณาระบุพิกัดแปลงบนแผนที่ก่อนบันทึก\n' +
-                (form.areaHectares > 4
-                    ? 'แปลงขนาดใหญ่กว่า 4 เฮกตาร์ต้องวาด Polygon อย่างน้อย 3 จุด'
+                (form.geoType === 'polygon'
+                    ? 'แปลงขนาดใหญ่กว่า 25 ไร่ ต้องวาด Polygon อย่างน้อย 3 จุด'
                     : 'คลิกบนแผนที่เพื่อระบุจุด Point ของแปลง')
+            );
+            return;
+        }
+
+        // ตรวจสอบกรณีอายุต่ำกว่า 4 ปี และผลผลิตเกิน 25 ตัน/ไร่ ต้องมีหลักฐาน
+        if (isYoungHighYield && !form.yieldEvidenceNote.trim()) {
+            alert(
+                '⚠️ ปริมาณผลผลิตที่ประเมินสูงเกินปกติสำหรับไม้อายุต่ำกว่า 4 ปี\n' +
+                `(${yieldPerRai.toFixed(1)} ตัน/ไร่ เกินเกณฑ์ 25 ตัน/ไร่)\n\n` +
+                'กรุณากรอกรายละเอียดและหลักฐานสนับสนุนในช่อง "เหตุผลและหลักฐานประกอบ" ก่อนบันทึก'
             );
             return;
         }
@@ -786,6 +809,26 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                 <label>ขนาดพื้นที่เป็นเฮกตาร์ (ฮก.)</label>
                                 <input type="number" class="form-control" value=${form.areaHectares} disabled />
                             </div>
+
+                            <!-- Geo Type Indicator — full width, locked after area entry -->
+                            <div class="form-group full-width">
+                                <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:var(--radius-md); border:2px solid ${form.geoType === 'polygon' ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'}; background:${form.geoType === 'polygon' ? 'rgba(245,158,11,0.06)' : 'rgba(16,185,129,0.06)'};">
+                                    <${Icon} name=${form.geoType === 'polygon' ? 'pentagon' : 'map-pin'} />
+                                    <div style="flex:1; font-size:0.82rem;">
+                                        <b style="color:${form.geoType === 'polygon' ? 'var(--warning)' : 'var(--primary)'};">
+                                            รูปแบบพิกัด EUDR: ${form.geoType === 'polygon' ? 'Map Polygon (≥ 25 ไร่)' : 'Point Geolocation (< 25 ไร่)'}
+                                        </b>
+                                        <div style="color:var(--text-muted); margin-top:2px;">
+                                            ${form.geoType === 'polygon'
+                                                ? 'แปลงขนาดนี้ต้องวาดเส้นล้อมรอบ (Polygon) อย่างน้อย 3 จุดบนแผนที่ตามข้อกำหนด EUDR'
+                                                : 'แปลงขนาดนี้ใช้จุด (Point) เป็นพิกัดกึ่งกลางแปลงได้ตามข้อกำหนด EUDR'}
+                                        </div>
+                                    </div>
+                                    <span class="badge ${form.geoType === 'polygon' ? 'badge-warning' : 'badge-success'}" style="white-space:nowrap;">
+                                        ${form.geoType === 'polygon' ? 'Polygon' : 'Point'}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="form-grid">
@@ -819,7 +862,42 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                             <div class="form-group full-width">
                                 <label>ประเมินปริมาณผลผลิตคาดว่าจะได้รับ (ตัน)</label>
                                 <input type="number" class="form-control" name="estVolume" value=${form.estVolume} onChange=${handleChange} placeholder="ประเมินเป็นจำนวนตัน" required />
+                                ${form.areaRai > 0 && form.estVolume > 0 && html`
+                                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px; display:flex; align-items:center; gap:6px;">
+                                        <${Icon} name="calculator" className="icon-sm" />
+                                        ปริมาณต่อไร่: <b style="color:${isYoungHighYield ? 'var(--danger)' : 'var(--primary)'};">${yieldPerRai.toFixed(1)} ตัน/ไร่</b>
+                                        ${treeAgeMonths > 0 && treeAgeMonths < 48 ? html`<span style="color:var(--text-muted);">(อายุไม้ ${(treeAgeMonths/12).toFixed(1)} ปี — เกณฑ์สูงสุด 25 ตัน/ไร่)</span>` : ''}
+                                    </div>
+                                `}
                             </div>
+
+                            <!-- ⚠️ Yield Anomaly Warning: age < 4 yr AND yield > 25 t/rai -->
+                            ${isYoungHighYield && html`
+                                <div class="form-group full-width">
+                                    <div style="padding:14px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:var(--radius-md);">
+                                        <div style="display:flex; align-items:center; gap:8px; font-weight:700; color:#f87171; margin-bottom:8px; font-size:0.9rem;">
+                                            <${Icon} name="alert-triangle" /> ⚠️ ตรวจพบปริมาณผลผลิตผิดปกติ
+                                        </div>
+                                        <p style="font-size:0.82rem; color:#fca5a5; margin-bottom:10px;">
+                                            ไม้อายุ <b>${(treeAgeMonths/12).toFixed(1)} ปี</b> (ต่ำกว่า 4 ปี) แต่ประเมินผลผลิต <b>${yieldPerRai.toFixed(1)} ตัน/ไร่</b>
+                                            ซึ่งสูงกว่าเกณฑ์ตรวจสอบ <b>25 ตัน/ไร่</b> สำหรับไม้อายุน้อยกว่า 4 ปี
+                                            กรุณาระบุเหตุผลและหลักฐานสนับสนุนด้านล่าง มิฉะนั้นระบบจะไม่อนุญาตให้บันทึก
+                                        </p>
+                                        <label style="font-size:0.82rem; font-weight:600; color:#fca5a5; display:block; margin-bottom:4px;">
+                                            เหตุผลและหลักฐานประกอบ <span style="color:#ef4444;">*</span>
+                                        </label>
+                                        <textarea
+                                            class="form-control"
+                                            name="yieldEvidenceNote"
+                                            rows="3"
+                                            style="background:rgba(15,23,42,0.6); border-color:rgba(239,68,68,0.4); font-size:0.85rem;"
+                                            placeholder="เช่น: มีใบชั่งน้ำหนักจากโรงงานอ้างอิง / ผลผลิตมาจากหลายรอบการตัดฟัน / แปลงปลูกซ้อนทับกับแปลงเดิม ฯลฯ"
+                                            value=${form.yieldEvidenceNote}
+                                            onChange=${handleChange}
+                                        ></textarea>
+                                    </div>
+                                </div>
+                            `}
                         </div>
 
                         <!-- 2.5. FM Certificate -->
@@ -1042,23 +1120,27 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                         <div class="dashboard-card" style="padding: 24px;">
                             <div class="card-header" style="margin-bottom:12px;">
                                 <h2>
-                                    <${Icon} name="navigation" /> 
-                                    พิกัดที่ดินสำหรับ EUDR 
-                                    (${form.areaHectares > 4 ? 'โหมด Polygon' : 'โหมด Point'})
+                                    <${Icon} name="navigation" />
+                                    พิกัดที่ดินสำหรับ EUDR
+                                    <span class="badge ${form.geoType === 'polygon' ? 'badge-warning' : 'badge-success'}" style="margin-left:8px; font-size:0.7rem;">
+                                        ${form.geoType === 'polygon' ? '🔷 Polygon Mode' : '📍 Point Mode'}
+                                    </span>
                                 </h2>
                             </div>
-                            
+
                             <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
-                                <${Icon} name="info" className="icon-sm" /> 
-                                ข้อกำหนด EUDR: หากที่ดินมีขนาดมากกว่า <b>4 เฮกตาร์ (25 ไร่)</b> ต้องบันทึกพิกัดแบบเส้นล้อมรอบ (Polygon)<br/>
-                                กรุณาคลิกเลือกจุดบนแผนที่เพื่อระบุตำแหน่ง/วาดเส้นล้อมรอบแปลง
+                                <${Icon} name="info" className="icon-sm" />
+                                ${form.geoType === 'polygon'
+                                    ? html`แปลง <b>${form.areaRai} ไร่</b> ≥ 25 ไร่ → ต้องวาดเส้นล้อมรอบ <b>Polygon</b> อย่างน้อย 3 จุด (คลิกบนแผนที่เพื่อเพิ่มจุด ยิ่งมากจุด ยิ่งแม่นยำ)`
+                                    : html`แปลง <b>${form.areaRai} ไร่</b> < 25 ไร่ → ใช้ <b>Point</b> คลิก 1 จุดที่กึ่งกลางแปลง`
+                                }
                             </p>
 
-                            <!-- Leaflet Map Integration -->
-                            <${InteractiveMap} 
-                                mode="edit" 
-                                type=${form.areaHectares > 4 ? 'polygon' : 'point'} 
-                                coordinates=${form.coords} 
+                            <!-- Leaflet Map Integration — type ล็อกจาก geoType เพื่อป้องกัน re-init -->
+                            <${InteractiveMap}
+                                mode="edit"
+                                type=${form.geoType}
+                                coordinates=${form.coords}
                                 onChange=${handleMapCoordsChange}
                             />
 
