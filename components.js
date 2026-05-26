@@ -1957,10 +1957,10 @@ export function TimberDeliveryNote({ shipments, plantations }) {
                 </button>
             </div>
 
-            <div style="display:grid; grid-template-columns:320px 1fr; gap:24px; align-items:start;">
+            <div class="doc-print-layout" style="display:grid; grid-template-columns:320px 1fr; gap:24px; align-items:start;">
 
-                <!-- Left: Selection & Company Info -->
-                <div class="form-container" style="display:flex; flex-direction:column; gap:16px;">
+                <!-- Left: Selection & Company Info (print-hide: ซ่อนตอนพิมพ์) -->
+                <div class="form-container print-hide" style="display:flex; flex-direction:column; gap:16px;">
                     <div style="font-size:1rem; font-weight:700; color:var(--primary); padding-bottom:8px; border-bottom:1px solid var(--border-color); display:flex; align-items:center; gap:8px;">
                         <${Icon} name="settings" /> ตั้งค่าใบนำส่ง
                     </div>
@@ -2003,7 +2003,7 @@ export function TimberDeliveryNote({ shipments, plantations }) {
                 </div>
 
                 <!-- Right: Printable Delivery Note -->
-                <div class="printable-report" style="padding:28px; background:#fff; color:#0f172a; font-family:'Sarabun', sans-serif;">
+                <div class="printable-report" style="padding:28px; background:#fff; color:#0f172a; font-family:'Sarabun','TH Sarabun New',sans-serif; font-size:13px; line-height:1.55;">
 
                     <!-- Header -->
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:12px;">
@@ -2262,7 +2262,7 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
             <div class="dds-layout">
                 
                 <!-- Left Column: Printable Report Document (A4 Styling) -->
-                <div class="printable-report">
+                <div class="printable-report" style="font-family:'Sarabun','TH Sarabun New',sans-serif; font-size:13px; line-height:1.55;">
                     <div class="report-header">
                         <div class="report-logo">
                             <h2>THAILAND FORESTRY DDS PORTAL</h2>

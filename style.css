@@ -984,54 +984,191 @@ input:checked + .slider:before {
     }
 }
 
-/* ===== Print Styles (DDS Report) ===== */
+/* ===== Utility: hide in print / show only in print ===== */
+.print-only { display: none !important; }
+
+/* ===== Print Styles — A4 Standard ===== */
 @media print {
+
+    /* Page geometry */
+    @page {
+        size: A4 portrait;
+        margin: 20mm 20mm 25mm 25mm; /* top right bottom left */
+    }
+
+    /* Force browser to print colors & backgrounds exactly */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+
+    /* Reset body to white paper */
+    html, body {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        font-family: 'Sarabun', 'TH Sarabun New', 'Angsana New', sans-serif !important;
+        font-size: 11pt !important;
+        line-height: 1.55 !important;
+    }
+
+    /* ── Hide all application chrome ── */
     .sidebar,
     .hamburger-btn,
-    .header-actions .btn,
-    .geojson-panel,
+    .header-actions,          /* page title + action buttons */
+    .geojson-panel,           /* DDS: GeoJSON code panel */
     .table-container,
     .dashboard-grid,
-    .grid-stats {
+    .grid-stats,
+    .print-hide {             /* explicit hide flag */
         display: none !important;
     }
 
-    body {
-        background: white !important;
+    /* Show elements marked print-only */
+    .print-only {
+        display: block !important;
+    }
+
+    /* ── Reset app layout ── */
+    .app-container {
+        display: block !important;
+        background: none !important;
+        background-image: none !important;
     }
 
     .main-content {
         padding: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        overflow: visible !important;
     }
 
-    .dds-layout {
-        grid-template-columns: 1fr !important;
+    /* ── Collapse document layout wrappers ── */
+    .dds-layout,
+    .doc-print-layout {
+        display: block !important;
     }
 
+    /* ── Printable document base ── */
     .printable-report {
-        background: white !important;
+        background: #ffffff !important;
         color: #0f172a !important;
         border: none !important;
         box-shadow: none !important;
         padding: 0 !important;
+        margin: 0 !important;
         width: 100% !important;
+        max-width: 100% !important;
         border-radius: 0 !important;
+        font-family: 'Sarabun', 'TH Sarabun New', 'Angsana New', sans-serif !important;
+        font-size: 11pt !important;
+        line-height: 1.55 !important;
+        display: block !important;
     }
 
-    .report-header,
-    .report-footer {
-        border-color: #cbd5e1 !important;
+    /* ── Tables ── */
+    .printable-report table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 10.5pt !important;
+        page-break-inside: auto;
     }
 
-    .report-status-block {
-        border-color: #cbd5e1 !important;
+    .printable-report table td,
+    .printable-report table th {
+        border: 0.5pt solid #475569 !important;
+        padding: 5pt 8pt !important;
+        vertical-align: middle !important;
+        line-height: 1.4 !important;
+    }
+
+    /* Section header bars (dark background) */
+    .printable-report div[style*="background:#0f172a"],
+    .printable-report div[style*="background: #0f172a"] {
+        background: #0f172a !important;
+        color: #ffffff !important;
+    }
+
+    /* Light background cells */
+    .printable-report td[style*="background:#f8fafc"],
+    .printable-report td[style*="background: #f8fafc"] {
         background: #f8fafc !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
     }
 
-    @page {
-        size: A4 portrait;
-        margin: 18mm 20mm;
+    /* ── Signature lines ── */
+    .printable-report [style*="border-bottom:1px solid #0f172a"],
+    .printable-report [style*="border-bottom: 1px solid #0f172a"] {
+        border-bottom: 0.5pt solid #0f172a !important;
     }
+
+    /* ── Status badges ── */
+    .badge {
+        border: 0.5pt solid currentColor !important;
+        padding: 1pt 5pt !important;
+        font-size: 9pt !important;
+        border-radius: 4pt !important;
+    }
+    .badge-success { color: #065f46 !important; background: #d1fae5 !important; }
+    .badge-warning { color: #78350f !important; background: #fef3c7 !important; }
+    .badge-danger  { color: #7f1d1d !important; background: #fee2e2 !important; }
+    .badge-info    { color: #1e3a8a !important; background: #dbeafe !important; }
+
+    /* ── DDS Report specific ── */
+    .report-header {
+        border-bottom: 1.5pt solid #0f172a !important;
+        padding-bottom: 10pt !important;
+        margin-bottom: 8pt !important;
+    }
+    .report-footer {
+        border-top: 0.5pt solid #cbd5e1 !important;
+        padding-top: 10pt !important;
+        margin-top: 10pt !important;
+    }
+    .report-title {
+        text-align: center !important;
+        margin: 6pt 0 !important;
+    }
+    .report-grid {
+        page-break-inside: avoid !important;
+        margin-bottom: 10pt !important;
+        gap: 8pt !important;
+    }
+    .report-item {
+        font-size: 10pt !important;
+    }
+    .report-item span {
+        font-size: 8pt !important;
+    }
+    .report-status-block {
+        page-break-inside: avoid !important;
+        border: 0.5pt solid #cbd5e1 !important;
+        background: #f8fafc !important;
+        padding: 8pt 10pt !important;
+        margin-bottom: 8pt !important;
+        font-size: 10pt !important;
+    }
+    .report-status-title {
+        font-size: 10pt !important;
+        margin-bottom: 5pt !important;
+    }
+    /* ── DDS layout: spacing for block children ── */
+    .dds-layout .printable-report > * + * {
+        margin-top: 8pt !important;
+    }
+
+    /* ── Typography ── */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Sarabun', 'TH Sarabun New', sans-serif !important;
+        page-break-after: avoid !important;
+        color: #0f172a !important;
+    }
+
+    p, li { orphans: 3; widows: 3; }
+
+    a { color: inherit !important; text-decoration: none !important; }
+
+    /* ── Page break helpers ── */
+    .page-break          { page-break-after: always !important; }
+    .no-break            { page-break-inside: avoid !important; }
+    tr                   { page-break-inside: avoid; }
 }
