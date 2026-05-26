@@ -4,21 +4,70 @@ import htm from 'https://esm.sh/htm';
 
 const html = htm.bind(h);
 
-// Common plantation species in Thailand for FSC/EUDR context
+// Species list aligned with FSC CoC Manual — Thai plantation species
 const SPECIES_LIST = [
-    'Eucalyptus camaldulensis',
-    'Eucalyptus urophylla',
-    'Eucalyptus hybrid (Clone)',
-    'Tectona grandis (สักทอง)',
+    // ยูคาลิปตัส (Eucalyptus spp.)
+    'Eucalyptus camaldulensis (ยูคาลิปตัสน้ำ)',
+    'Eucalyptus urophylla (ยูคาลิปตัสใบยาว)',
+    'Eucalyptus hybrid Clone K58 (ยูคาลิปตัสลูกผสม K58)',
+    'Eucalyptus hybrid Clone K72 (ยูคาลิปตัสลูกผสม K72)',
+    'Eucalyptus hybrid Clone KU1 (ยูคาลิปตัสลูกผสม KU1)',
+    'Eucalyptus hybrid Clone AU1 (ยูคาลิปตัสลูกผสม AU1)',
+    'Eucalyptus pellita',
+    'Eucalyptus grandis',
+    // กระถิน (Acacia spp.)
     'Acacia mangium (กระถินณรงค์)',
     'Acacia auriculiformis (กระถินออสเตรเลีย)',
+    'Acacia hybrid (กระถินลูกผสม)',
+    'Acacia crassicarpa',
+    // ไม้สัก
+    'Tectona grandis (สักทอง)',
+    // สน (Pine spp.)
     'Pinus kesiya (สนสามใบ)',
+    'Pinus merkusii (สนสองใบ)',
+    'Pinus caribaea (สนแคริบเบียน)',
+    // ยางพารา
     'Hevea brasiliensis (ยางพารา)',
+    // สนประดิพัทธ์
     'Casuarina junghuhniana (สนประดิพัทธ์)',
+    'Casuarina equisetifolia (สนทะเล)',
+    // ไม้ประดับ/ไม้มูลค่าสูง
     'Dalbergia cochinchinensis (พะยูง)',
+    'Pterocarpus macrocarpus (ประดู่ป่า)',
     'Dipterocarpus alatus (ยางนา)',
     'Shorea roxburghii (พลวง)',
+    'Tectona grandis x T. hamiltoniana (สักลูกผสม)',
+    // ไม้โตเร็ว/ไม้เศรษฐกิจอื่น ๆ
+    'Gmelina arborea (ยอป่า / เกด)',
+    'Melia azedarach (สะเดาปลอม)',
+    'Azadirachta indica (สะเดาอินเดีย)',
+    'Swietenia macrophylla (มะฮอกกานีใบใหญ่)',
+    'Paulownia fortunei (พอลโลเนีย)',
+    'Aquilaria crassna (กฤษณา)',
+    // ไผ่ (Bamboo spp.)
+    'Dendrocalamus asper (ไผ่ตง)',
+    'Bambusa bambos (ไผ่ป่า)',
+    'Bambusa vulgaris (ไผ่สีสุก)',
+    'Phyllostachys sp. (ไผ่จีน)',
 ];
+
+// Helper: consistent display label for a plantation record
+const getPlotLabel = (p) => `${p.id} — แปลง ${p.plotCode || ''}`;
+
+// Calculate polygon area in hectares using spherical excess formula
+function calcPolygonAreaHa(coords) {
+    if (!coords || coords.length < 3) return 0;
+    const toRad = d => d * Math.PI / 180;
+    const R = 6371000; // Earth radius metres
+    let area = 0;
+    const n = coords.length;
+    for (let i = 0; i < n; i++) {
+        const p1 = coords[i];
+        const p2 = coords[(i + 1) % n];
+        area += toRad(p2.lng - p1.lng) * (2 + Math.sin(toRad(p1.lat)) + Math.sin(toRad(p2.lat)));
+    }
+    return parseFloat((Math.abs(area * R * R / 2) / 10000).toFixed(4));
+}
 
 // CSV export utility with Thai BOM for Excel compatibility
 function exportToCsv(filename, headers, rows) {
@@ -134,8 +183,9 @@ export function InteractiveMap({ mode = "view", type = "point", coordinates, onC
                         }).addTo(map);
 
                         const popupHtml = `
-                            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; width: 180px;">
-                                <h4 style="margin: 0 0 5px 0; font-size:14px; font-weight:bold;">${p.name}</h4>
+                            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; width: 190px;">
+                                <h4 style="margin: 0 0 4px 0; font-size:13px; font-weight:bold;">${p.id}</h4>
+                                <div style="font-size:11px; color:#475569; margin-bottom:4px;">แปลง ${p.plotCode || ''} | ${p.province}</div>
                                 <b>เจ้าของ:</b> ${p.owner}<br/>
                                 <b>พื้นที่:</b> ${p.areaRai} ไร่ (${p.areaHectares} ฮก.)<br/>
                                 <b>FSC:</b> ${p.fscStatus}<br/>
@@ -157,8 +207,9 @@ export function InteractiveMap({ mode = "view", type = "point", coordinates, onC
                         }).addTo(map);
 
                         const popupHtml = `
-                            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; width: 180px;">
-                                <h4 style="margin: 0 0 5px 0; font-size:14px; font-weight:bold;">${p.name}</h4>
+                            <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; width: 190px;">
+                                <h4 style="margin: 0 0 4px 0; font-size:13px; font-weight:bold;">${p.id}</h4>
+                                <div style="font-size:11px; color:#475569; margin-bottom:4px;">แปลง ${p.plotCode || ''} | ${p.province}</div>
                                 <b>เจ้าของ:</b> ${p.owner}<br/>
                                 <b>พื้นที่:</b> ${p.areaRai} ไร่ (${p.areaHectares} ฮก.)<br/>
                                 <b>FSC:</b> ${p.fscStatus}<br/>
@@ -323,16 +374,17 @@ export function Dashboard({ plantations, shipments, setTab, setSelectedPlantatio
     // Compliance notifications/warnings
     const warnings = [];
     plantations.forEach(p => {
+        const label = getPlotLabel(p);
         if (!p.eudrCompliant) {
             warnings.push({
                 type: 'danger',
-                title: `พบข้อบกพร่องด้าน EUDR: แปลง ${p.name}`,
+                title: `พบข้อบกพร่องด้าน EUDR: ${label}`,
                 msg: `ที่ดินไม่ผ่านข้อกำหนดเนื่องจาก: ${p.eudrWarning || 'ไม่ได้ระบุเหตุผล'}`
             });
         } else if (p.fscStatus === 'FSC Controlled Wood' && p.fscCWVerdict === 'Specified Risk') {
             warnings.push({
                 type: 'warning',
-                title: `ประเมินความเสี่ยง FSC CW สูง: แปลง ${p.name}`,
+                title: `ประเมินความเสี่ยง FSC CW สูง: ${label}`,
                 msg: `มีการประเมินในหมวดหมู่ที่มีความเสี่ยงเฉพาะ (Specified Risk) ต้องควบคุมห่วงโซ่เพิ่มเติม`
             });
         }
@@ -472,13 +524,13 @@ export function Dashboard({ plantations, shipments, setTab, setSelectedPlantatio
                                 <td colspan="7" style="text-align: center; color: var(--text-muted);">ไม่พบข้อมูลธุรกรรมการส่งมอบไม้</td>
                             </tr>
                         ` : recentShipments.map(s => {
-                            const p = plantations.find(x => x.id === s.plantationId) || { name: 'ไม่ทราบชื่อแปลง' };
+                            const p = plantations.find(x => x.id === s.plantationId) || { id: s.plantationId, plotCode: '??' };
                             return html`
                                 <tr key=${s.id}>
                                     <td>${s.date}</td>
                                     <td>
                                         <a href="#" style="color: var(--primary); text-decoration: none;" onClick=${(e) => { e.preventDefault(); selectPlantationOnMap(s.plantationId); }}>
-                                            ${p.name}
+                                            ${getPlotLabel(p)}
                                         </a>
                                     </td>
                                     <td>${s.millName}</td>
@@ -505,11 +557,11 @@ export function Dashboard({ plantations, shipments, setTab, setSelectedPlantatio
 // -------------------------------------------------------------
 export function PlantationForm({ plantations, onSave, onCancel, editPlantationId }) {
     const editMode = !!editPlantationId;
-    const defaultPlantation = editMode 
-        ? plantations.find(p => p.id === editPlantationId) 
+    const defaultPlantation = editMode
+        ? plantations.find(p => p.id === editPlantationId)
         : {
-            id: 'PLT-' + Math.floor(1000 + Math.random() * 9000),
-            name: '',
+            id: 'FSC-' + String(Math.floor(100000 + Math.random() * 900000)),
+            plotCode: '',
             owner: '',
             tel: '',
             subdistrict: '',
@@ -520,7 +572,7 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
             landDocType: 'Chanote',
             landDocNumber: '',
             landDocIssueDate: '',
-            spcName: 'Eucalyptus camaldulensis',
+            spcName: 'Eucalyptus camaldulensis (ยูคาลิปตัสน้ำ)',
             fmCertified: false,
             fmCertNumber: '',
             plantDate: '',
@@ -535,8 +587,11 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
             fscSTD3: true, // HCV
             fscSTD4: true, // Non-conversion
             fscSTD5: true, // GMO-free
+            fscSTD6: true, // Labour rights
+            fscSTD7: true, // No conflict timber
             docAttachmentDeed: false,
-            docAttachmentOwnerID: false
+            docAttachmentOwnerID: false,
+            docAttachmentSaleContract: false
         };
 
     const [form, setForm] = useState({ ...defaultPlantation });
@@ -568,9 +623,18 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
         setForm(updatedForm);
     };
 
-    // Callback for Map coordinate edits
+    // Callback for Map coordinate edits — auto-calculate polygon area
     const handleMapCoordsChange = (newCoords) => {
-        setForm(prev => ({ ...prev, coords: newCoords }));
+        setForm(prev => {
+            let update = { ...prev, coords: newCoords };
+            if (prev.geoType === 'polygon' && Array.isArray(newCoords) && newCoords.length >= 3) {
+                const calcHa = calcPolygonAreaHa(newCoords);
+                const calcRai = parseFloat((calcHa * 6.25).toFixed(2));
+                update.areaHectares = calcHa;
+                update.areaRai = calcRai;
+            }
+            return update;
+        });
     };
 
     // Calculate dynamic values
@@ -578,9 +642,8 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
         ? Math.floor((new Date() - new Date(form.plantDate)) / (1000 * 60 * 60 * 24 * 30))
         : 0;
 
-    // FSC Controlled Wood Risk Assessment Calculation
-    // If all fscSTD inputs are true, CW Verdict is Low Risk. If any is false, it is Specified Risk.
-    const isFscCwPass = form.fscSTD1 && form.fscSTD2 && form.fscSTD3 && form.fscSTD4 && form.fscSTD5;
+    // FSC Controlled Wood Risk Assessment Calculation (7 categories)
+    const isFscCwPass = form.fscSTD1 && form.fscSTD2 && form.fscSTD3 && form.fscSTD4 && form.fscSTD5 && form.fscSTD6 && form.fscSTD7;
     const fscCwVerdict = isFscCwPass ? 'Low Risk' : 'Specified Risk';
 
     // EUDR Overall Compliance Calculation
@@ -649,13 +712,24 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                             </div>
 
                             <div class="form-group">
-                                <label>รหัสแปลงปลูก</label>
-                                <input type="text" class="form-control" name="id" value=${form.id} disabled />
+                                <label>รหัสลูกค้า (Customer ID)</label>
+                                <input type="text" class="form-control" name="id" value=${form.id} disabled title="สร้างโดยอัตโนมัติ รูปแบบ FSC-xxxxxx" />
                             </div>
 
                             <div class="form-group">
-                                <label>ชื่อแปลงปลูก</label>
-                                <input type="text" class="form-control" name="name" value=${form.name} onChange=${handleChange} placeholder="เช่น แปลงลานสัก 1" required />
+                                <label>รหัสแปลงปลูก <span style="font-size:0.75rem;color:var(--text-muted);">(เลข 3 หลัก 001–999)</span></label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    name="plotCode"
+                                    value=${form.plotCode}
+                                    onChange=${handleChange}
+                                    placeholder="เช่น 001"
+                                    pattern="[0-9]{1,3}"
+                                    maxlength="3"
+                                    required
+                                    style="font-family:monospace; font-size:1.1rem; letter-spacing:2px;"
+                                />
                             </div>
 
                             <div class="form-group">
@@ -829,10 +903,15 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                             </div>
                         </div>
 
-                        <!-- 4. FSC Controlled Wood Evaluation -->
+                        <!-- 4. FSC Controlled Wood Risk Self-Assessment (7 categories) -->
                         <div class="form-grid">
                             <div class="form-section-title">
-                                <${Icon} name="check-square" /> 4. การประเมินตนเองเกี่ยวกับความเสี่ยงไม้ควบคุม FSC Controlled Wood
+                                <${Icon} name="check-square" /> 4. การประเมินตนเองตามเอกสารประเมินความเสี่ยงแปลง (FSC-STD-40-005 V3-1)
+                            </div>
+                            <div class="form-group full-width" style="margin-bottom:-4px;">
+                                <div style="font-size:0.78rem; color:var(--text-muted); background:rgba(59,130,246,0.05); border:1px dashed rgba(59,130,246,0.2); padding:10px 12px; border-radius:var(--radius-md);">
+                                    ทำเครื่องหมาย ✓ ในทุกหมวดหมู่ที่ผ่านการประเมิน — หากไม่ผ่านแม้แต่หมวดหมู่เดียว ระดับความเสี่ยง FSC CW จะเป็น <b style="color:var(--warning);">Specified Risk</b> และต้องดำเนินมาตรการลดความเสี่ยงก่อนออก FSC Claim
+                                </div>
                             </div>
 
                             <div class="form-group full-width">
@@ -840,58 +919,88 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                     <div class="checklist-item">
                                         <input type="checkbox" class="checklist-checkbox" name="fscSTD1" checked=${form.fscSTD1} onChange=${handleChange} id="cw1" />
                                         <div class="checklist-content">
-                                            <label for="cw1" style="cursor:pointer; display:block;"><h5>หมวดหมู่ 1: แหล่งไม้ถูกกฎหมาย (Legally Harvested)</h5></label>
-                                            <p>ที่ดินมีสิทธิ์ครอบครองและมีใบอนุญาตหรือข้อกำหนดกฎหมายที่สอดคล้องกับการเพาะปลูกและขายไม้</p>
+                                            <label for="cw1" style="cursor:pointer; display:block;">
+                                                <h5>หมวดที่ 1 — ความถูกต้องตามกฎหมายในการตัดฟันและขายไม้</h5>
+                                            </label>
+                                            <p>เจ้าของแปลงมีเอกสารสิทธิ์ที่ดินถูกต้องตามกฎหมาย (โฉนด/น.ส.3/ส.ป.ก.) มีสิทธิ์ทำประโยชน์จากที่ดิน และมีใบอนุญาตหรือหนังสือแจ้งการตัดฟันถูกต้องตามพระราชบัญญัติป่าไม้ พ.ศ. 2484 (กรณีไม้ควบคุม)</p>
                                         </div>
                                     </div>
 
                                     <div class="checklist-item">
                                         <input type="checkbox" class="checklist-checkbox" name="fscSTD2" checked=${form.fscSTD2} onChange=${handleChange} id="cw2" />
                                         <div class="checklist-content">
-                                            <label for="cw2" style="cursor:pointer; display:block;"><h5>หมวดหมู่ 2: สิทธิของชนเผ่าพื้นเมืองและสิทธิมนุษยชน (Traditional/Human Rights)</h5></label>
-                                            <p>การเพาะปลูกพืชนี้ไม่มีกรณีพิพาทเรื่องดินแดนกับชุมชนท้องถิ่นหรือละเมิดจารีตประเพณีสิทธิ์</p>
+                                            <label for="cw2" style="cursor:pointer; display:block;">
+                                                <h5>หมวดที่ 2 — สิทธิ์ชุมชน สิทธิ์ดั้งเดิม และสิทธิมนุษยชน</h5>
+                                            </label>
+                                            <p>ไม่มีข้อพิพาทเรื่องสิทธิ์ที่ดินกับชุมชนท้องถิ่นหรือชนเผ่าพื้นเมือง ไม่มีการบังคับยึดที่ดินโดยไม่ยินยอม และไม่มีการละเมิดสิทธิมนุษยชนในกระบวนการดูแลสวนป่า</p>
                                         </div>
                                     </div>
 
                                     <div class="checklist-item">
                                         <input type="checkbox" class="checklist-checkbox" name="fscSTD3" checked=${form.fscSTD3} onChange=${handleChange} id="cw3" />
                                         <div class="checklist-content">
-                                            <label for="cw3" style="cursor:pointer; display:block;"><h5>หมวดหมู่ 3: คุณค่าการอนุรักษ์สูง (High Conservation Values - HCV)</h5></label>
-                                            <p>กระบวนการจัดการแปลงไม่คุกคามพื้นที่ป่าอนุรักษ์ธรรมชาติหรือแหล่งรักษาระบบนิเวศสำคัญ</p>
+                                            <label for="cw3" style="cursor:pointer; display:block;">
+                                                <h5>หมวดที่ 3 — ไม่คุกคามพื้นที่คุณค่าการอนุรักษ์สูง (High Conservation Value)</h5>
+                                            </label>
+                                            <p>แปลงปลูกไม่ตั้งอยู่ในหรือติดกับพื้นที่ป่าอนุรักษ์ เขตรักษาพันธุ์สัตว์ป่า อุทยานแห่งชาติ หรือแหล่งที่อยู่อาศัยของสัตว์ใกล้สูญพันธุ์ตามกฎหมาย IUCN</p>
                                         </div>
                                     </div>
 
                                     <div class="checklist-item">
                                         <input type="checkbox" class="checklist-checkbox" name="fscSTD4" checked=${form.fscSTD4} onChange=${handleChange} id="cw4" />
                                         <div class="checklist-content">
-                                            <label for="cw4" style="cursor:pointer; display:block;"><h5>หมวดหมู่ 4: ไม่เป็นพื้นที่แปลงสภาพป่าธรรมชาติ (Non-conversion of Forests)</h5></label>
-                                            <p>ที่ดินแปลงนี้ไม่ใช่ป่าธรรมชาติที่ถูกบุกรุกเพื่อทำเป็นสวนป่าไม้เศรษฐกิจหลังปี ค.ศ. 1994</p>
+                                            <label for="cw4" style="cursor:pointer; display:block;">
+                                                <h5>หมวดที่ 4 — ไม่เป็นพื้นที่แปลงสภาพจากป่าธรรมชาติ (Non-Conversion)</h5>
+                                            </label>
+                                            <p>ที่ดินนี้ไม่ใช่พื้นที่ป่าธรรมชาติที่ถูกบุกรุกเพื่อเปลี่ยนเป็นสวนปลูกไม้หลังปี ค.ศ. 1994 ตรวจสอบจากภาพดาวเทียมและแผนที่ forest baseline ย้อนหลัง 30 ปีแล้ว</p>
                                         </div>
                                     </div>
 
                                     <div class="checklist-item">
                                         <input type="checkbox" class="checklist-checkbox" name="fscSTD5" checked=${form.fscSTD5} onChange=${handleChange} id="cw5" />
                                         <div class="checklist-content">
-                                            <label for="cw5" style="cursor:pointer; display:block;"><h5>หมวดหมู่ 5: ไม่ใช้สิ่งมีชีวิตดัดแปลงพันธุกรรม (No GMO Trees)</h5></label>
-                                            <p>ยืนยันว่ายูคาลิปตัสที่ปลูกไม่ได้มาจากสายพันธุ์จีเอ็มโอ (Genetically Modified Trees)</p>
+                                            <label for="cw5" style="cursor:pointer; display:block;">
+                                                <h5>หมวดที่ 5 — ปราศจากพันธุ์ไม้ดัดแปลงพันธุกรรม (No GMO Trees)</h5>
+                                            </label>
+                                            <p>ยืนยันว่าไม้ที่ปลูกในแปลงนี้ไม่ได้มาจากพันธุ์ที่ผ่านการดัดแปลงพันธุกรรม (Genetically Modified Organisms) ตามคำนิยาม FSC Policy on GMOs (FSC-POL-30-001)</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="checklist-item">
+                                        <input type="checkbox" class="checklist-checkbox" name="fscSTD6" checked=${form.fscSTD6} onChange=${handleChange} id="cw6" />
+                                        <div class="checklist-content">
+                                            <label for="cw6" style="cursor:pointer; display:block;">
+                                                <h5>หมวดที่ 6 — มาตรฐานแรงงานและสิทธิมนุษยชนขั้นพื้นฐาน (Core Labour Standards)</h5>
+                                            </label>
+                                            <p>ไม่มีการใช้แรงงานเด็ก แรงงานบังคับ หรือแรงงานผิดกฎหมายในกระบวนการปลูก ดูแล หรือตัดฟันในแปลงนี้ แรงงานทุกคนได้รับค่าแรงขั้นต่ำตามกฎหมายและมีสัญญาจ้างงานถูกต้อง</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="checklist-item">
+                                        <input type="checkbox" class="checklist-checkbox" name="fscSTD7" checked=${form.fscSTD7} onChange=${handleChange} id="cw7" />
+                                        <div class="checklist-content">
+                                            <label for="cw7" style="cursor:pointer; display:block;">
+                                                <h5>หมวดที่ 7 — ไม่ใช่ไม้จากพื้นที่ขัดแย้งทางอาวุธ (No Conflict Timber)</h5>
+                                            </label>
+                                            <p>ไม้จากแปลงนี้ไม่ได้มาจากพื้นที่ที่มีความขัดแย้งทางอาวุธ ไม่ถูกนำไปใช้สนับสนุนกลุ่มติดอาวุธหรือฝ่ายที่ขัดต่อกฎหมายระหว่างประเทศตามนิยามของ FSC และ UN Security Council</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- 5. Verification Document Attachment Uploads Mocks -->
+                        <!-- 5. Verification Document Attachment Uploads -->
                         <div class="form-grid">
                             <div class="form-section-title">
                                 <${Icon} name="paperclip" /> 5. แนบเอกสารสิทธิ์ประกอบระบบ DDS
                             </div>
 
                             <div class="form-group">
-                                <label>สำเนาเอกสารสิทธิ์ที่ดิน (โฉนด/น.ส.3/ส.ป.ก.)</label>
+                                <label>สำเนาเอกสารสิทธิ์ที่ดิน (โฉนด/น.ส.3/ส.ป.ก./อื่นๆ)</label>
                                 <div style="display:flex; gap:10px; align-items:center;">
                                     <input type="file" style="display:none;" id="fileDeed" onChange=${() => setForm(f => ({ ...f, docAttachmentDeed: true }))} />
                                     <label for="fileDeed" class="btn btn-outline" style="font-size:0.8rem; margin:0; flex-grow:1; text-align:center;">
-                                        <${Icon} name="upload" className="icon-sm" /> ${form.docAttachmentDeed ? 'อัปโหลดเรียบร้อย' : 'เลือกไฟล์ภาพ/PDF'}
+                                        <${Icon} name="upload" className="icon-sm" /> ${form.docAttachmentDeed ? 'อัปโหลดเรียบร้อย ✓' : 'เลือกไฟล์ภาพ/PDF'}
                                     </label>
                                     ${form.docAttachmentDeed && html`
                                         <span class="badge badge-success"><${Icon} name="check" /></span>
@@ -900,13 +1009,26 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                             </div>
 
                             <div class="form-group">
-                                <label>สำเนาบัตรประชาชนผู้ถือกรรมสิทธิ์ / สิทธิ์รับจ้าง</label>
+                                <label>สำเนาบัตรประชาชนผู้ถือกรรมสิทธิ์ / สัญญาซื้อขายไม้</label>
                                 <div style="display:flex; gap:10px; align-items:center;">
                                     <input type="file" style="display:none;" id="fileID" onChange=${() => setForm(f => ({ ...f, docAttachmentOwnerID: true }))} />
                                     <label for="fileID" class="btn btn-outline" style="font-size:0.8rem; margin:0; flex-grow:1; text-align:center;">
-                                        <${Icon} name="upload" className="icon-sm" /> ${form.docAttachmentOwnerID ? 'อัปโหลดเรียบร้อย' : 'เลือกไฟล์ภาพ/PDF'}
+                                        <${Icon} name="upload" className="icon-sm" /> ${form.docAttachmentOwnerID ? 'อัปโหลดเรียบร้อย ✓' : 'เลือกไฟล์ภาพ/PDF'}
                                     </label>
                                     ${form.docAttachmentOwnerID && html`
+                                        <span class="badge badge-success"><${Icon} name="check" /></span>
+                                    `}
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>สัญญาซื้อขายไม้ (ถ้ามี)</label>
+                                <div style="display:flex; gap:10px; align-items:center;">
+                                    <input type="file" style="display:none;" id="fileSaleContract" onChange=${() => setForm(f => ({ ...f, docAttachmentSaleContract: true }))} />
+                                    <label for="fileSaleContract" class="btn btn-outline" style="font-size:0.8rem; margin:0; flex-grow:1; text-align:center;">
+                                        <${Icon} name="upload" className="icon-sm" /> ${form.docAttachmentSaleContract ? 'อัปโหลดเรียบร้อย ✓' : 'เลือกไฟล์ภาพ/PDF'}
+                                    </label>
+                                    ${form.docAttachmentSaleContract && html`
                                         <span class="badge badge-success"><${Icon} name="check" /></span>
                                     `}
                                 </div>
@@ -951,8 +1073,17 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                 ` : html`
                                     <div>
                                         <b>จำนวนขอบจุดของ Polygon:</b> ${Array.isArray(form.coords) ? form.coords.length : 0} จุด<br/>
-                                        <div style="max-height: 80px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; margin-top:4px;">
-                                            ${Array.isArray(form.coords) && form.coords.length > 0 
+                                        ${Array.isArray(form.coords) && form.coords.length >= 3 ? html`
+                                            <div style="margin-top:6px; padding:6px 10px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:6px;">
+                                                <${Icon} name="ruler" className="icon-sm" /> <b style="color:var(--primary)">พื้นที่คำนวณจาก Polygon:</b><br/>
+                                                <span style="font-size:1rem; font-weight:700; color:#10b981;">
+                                                    ${calcPolygonAreaHa(form.coords)} ฮก. = ${(calcPolygonAreaHa(form.coords) * 6.25).toFixed(2)} ไร่
+                                                </span>
+                                                <span style="font-size:0.7rem; color:var(--text-muted); display:block; margin-top:2px;">(อัพเดทช่องพื้นที่แปลงให้อัตโนมัติ)</span>
+                                            </div>
+                                        ` : ''}
+                                        <div style="max-height: 80px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; margin-top:6px;">
+                                            ${Array.isArray(form.coords) && form.coords.length > 0
                                                 ? form.coords.map((c, i) => html`<div key=${i}>จุดที่ ${i+1}: [${c.lat}, ${c.lng}]</div>`)
                                                 : html`<span style="color:var(--danger)">กรุณาคลิกบนแผนที่เพื่อวาดพิกัดอย่างน้อย 3 จุด</span>`
                                             }
@@ -1012,7 +1143,7 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
     const filtered = plantations.filter(p => {
         const q = search.toLowerCase();
         const matchText = !q ||
-            p.name.toLowerCase().includes(q) ||
+            (p.plotCode || '').toLowerCase().includes(q) ||
             p.owner.toLowerCase().includes(q) ||
             p.province.toLowerCase().includes(q) ||
             p.id.toLowerCase().includes(q);
@@ -1034,12 +1165,12 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
     const handleExportCsv = () => {
         exportToCsv(
             `plantations-${new Date().toISOString().slice(0, 10)}.csv`,
-            ['รหัสแปลง', 'ชื่อแปลง', 'เจ้าของ', 'โทรศัพท์', 'จังหวัด', 'อำเภอ', 'ตำบล',
+            ['รหัสลูกค้า', 'รหัสแปลง', 'เจ้าของ', 'โทรศัพท์', 'จังหวัด', 'อำเภอ', 'ตำบล',
              'ประเภทเอกสาร', 'เลขที่เอกสาร', 'พื้นที่(ไร่)', 'พื้นที่(ฮก.)',
              'ชนิดไม้', 'FM Cert', 'วันปลูก', 'วันตัดฟัน', 'ปริมาณ(ตัน)',
              'FSC สถานะ', 'EUDR สถานะ', 'หมายเหตุ EUDR'],
             filtered.map(p => [
-                p.id, p.name, p.owner, p.tel, p.province, p.district, p.subdistrict,
+                p.id, p.plotCode || '', p.owner, p.tel, p.province, p.district, p.subdistrict,
                 p.landDocType, p.landDocNumber, p.areaRai, p.areaHectares,
                 p.spcName, p.fmCertified ? (p.fmCertNumber || 'มี') : '-',
                 p.plantDate, p.harvestDate, p.estVolume,
@@ -1077,7 +1208,7 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
                             type="text"
                             class="search-input"
                             style="flex:1; min-width:200px;"
-                            placeholder="ค้นหาชื่อแปลง, เจ้าของ, จังหวัด, รหัส..."
+                            placeholder="ค้นหารหัสลูกค้า, รหัสแปลง, เจ้าของ, จังหวัด..."
                             value=${search}
                             onInput=${handleSearch}
                         />
@@ -1103,8 +1234,8 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>รหัสแปลง</th>
-                                <th>ชื่อแปลง / เจ้าของ</th>
+                                <th>รหัสลูกค้า / แปลง</th>
+                                <th>เจ้าของ / จังหวัด</th>
                                 <th>ประเภทสิทธิ์</th>
                                 <th>พื้นที่</th>
                                 <th>พิกัด</th>
@@ -1122,10 +1253,13 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
                                 </tr>
                             ` : paginated.map(p => html`
                                 <tr key=${p.id}>
-                                    <td><code>${p.id}</code></td>
                                     <td>
-                                        <div style="font-weight:600; color:#fff;">${p.name}</div>
-                                        <div style="font-size:0.75rem; color:var(--text-muted);">${p.owner} | โทร. ${p.tel}</div>
+                                        <code style="font-size:0.8rem;">${p.id}</code>
+                                        <div style="font-size:0.8rem; font-weight:700; color:var(--primary); margin-top:2px; font-family:monospace;">แปลง ${p.plotCode || '-'}</div>
+                                    </td>
+                                    <td>
+                                        <div style="font-weight:600; color:#fff;">${p.owner}</div>
+                                        <div style="font-size:0.75rem; color:var(--text-muted);">${p.province} | โทร. ${p.tel}</div>
                                     </td>
                                     <td><span style="font-weight:500;">${docLabel(p.landDocType)}</span></td>
                                     <td>
@@ -1212,7 +1346,7 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
             return s.id.toLowerCase().includes(q) ||
                 s.millName.toLowerCase().includes(q) ||
                 s.truckPlate.toLowerCase().includes(q) ||
-                (p && p.name.toLowerCase().includes(q));
+                (p && (p.id.toLowerCase().includes(q) || (p.plotCode || '').toLowerCase().includes(q)));
         })
         : shipments;
 
@@ -1252,14 +1386,14 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
     const handleExportCsv = () => {
         exportToCsv(
             `coc-ledger-${new Date().toISOString().slice(0, 10)}.csv`,
-            ['รหัส CoC', 'วันเวลา', 'แปลงต้นทาง', 'จังหวัดต้นทาง', 'โรงงานปลายทาง',
+            ['รหัส CoC', 'วันเวลา', 'รหัสลูกค้า', 'รหัสแปลง', 'จังหวัดต้นทาง', 'โรงงานปลายทาง',
              'น้ำหนัก(ตัน)', 'ทะเบียนรถ', 'จังหวัดรถ', 'คนขับ', 'เลขใบอนุญาต',
              'ใบนำส่ง', 'ใบชั่งน้ำหนัก', 'FSC Claim'],
             filteredShipments.map(s => {
                 const p = plantations.find(x => x.id === s.plantationId);
                 return [
                     s.id, s.date.replace('T', ' '),
-                    p ? p.name : s.plantationId, p ? p.province : '',
+                    p ? p.id : s.plantationId, p ? (p.plotCode || '') : '', p ? p.province : '',
                     s.millName, s.weight,
                     s.truckPlate, s.truckProvince,
                     s.driverName, s.driverLicense,
@@ -1291,7 +1425,7 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
                             <select class="form-control" name="plantationId" value=${form.plantationId} onChange=${handleSelectPlantation} required>
                                 <option value="">-- เลือกแปลงต้นทาง --</option>
                                 ${activePlantations.map(p => html`
-                                    <option key=${p.id} value=${p.id}>${p.name} (${p.province})</option>
+                                    <option key=${p.id} value=${p.id}>${p.id} — แปลง ${p.plotCode || ''} (${p.province}) — ${p.owner}</option>
                                 `)}
                             </select>
                         </div>
@@ -1395,7 +1529,7 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
                                         <td colspan="6" style="text-align:center; color:var(--text-muted); padding:32px;">ไม่พบรายการขนส่งไม้</td>
                                     </tr>
                                 ` : filteredShipments.map(s => {
-                                    const p = plantations.find(x => x.id === s.plantationId) || { name: 'ไม่พบข้อมูลแปลง', province: '' };
+                                    const p = plantations.find(x => x.id === s.plantationId) || { id: s.plantationId, plotCode: '??', province: '' };
                                     return html`
                                         <tr key=${s.id}>
                                             <td>
@@ -1403,7 +1537,7 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
                                                 <div style="font-size:0.75rem; color:var(--text-muted);">${s.date.replace('T', ' ')}</div>
                                             </td>
                                             <td>
-                                                <div style="font-weight:500; color:#fff; font-size:0.85rem;">จาก: ${p.name}</div>
+                                                <div style="font-weight:500; color:#fff; font-size:0.85rem;">จาก: ${getPlotLabel(p)}</div>
                                                 <div style="font-size:0.75rem; color:var(--text-muted);">ถึง: ${s.millName}</div>
                                             </td>
                                             <td>
@@ -1433,6 +1567,232 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+    `;
+}
+
+// -------------------------------------------------------------
+// Component: ใบนำส่งไม้ ตามข้อกำหนดกรมป่าไม้
+// -------------------------------------------------------------
+export function TimberDeliveryNote({ shipments, plantations }) {
+    const [selectedShipmentId, setSelectedShipmentId] = useState(shipments.length > 0 ? shipments[shipments.length - 1].id : '');
+    const [companyName, setCompanyName] = useState('บริษัท สยามอะโกรฟอเรสทรี จำกัด (SAAA)');
+    const [companyAddress, setCompanyAddress] = useState('');
+    const [officerName, setOfficerName] = useState('');
+
+    const s = shipments.find(x => x.id === selectedShipmentId);
+    const p = s ? plantations.find(x => x.id === s.plantationId) : null;
+
+    const handlePrint = () => window.print();
+
+    const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const issueDate = s ? new Date(s.date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }) : today;
+
+    return html`
+        <div>
+            <div class="header-actions">
+                <div class="page-title">
+                    <h1>ใบนำส่งไม้ (กรมป่าไม้)</h1>
+                    <p>สร้างและพิมพ์ใบนำส่งไม้ตามข้อกำหนดพระราชบัญญัติป่าไม้ พ.ศ. 2484 และมาตรฐาน FSC CoC</p>
+                </div>
+                <button class="btn btn-primary" onClick=${handlePrint}>
+                    <${Icon} name="printer" /> พิมพ์ใบนำส่งไม้
+                </button>
+            </div>
+
+            <div style="display:grid; grid-template-columns:320px 1fr; gap:24px; align-items:start;">
+
+                <!-- Left: Selection & Company Info -->
+                <div class="form-container" style="display:flex; flex-direction:column; gap:16px;">
+                    <div style="font-size:1rem; font-weight:700; color:var(--primary); padding-bottom:8px; border-bottom:1px solid var(--border-color); display:flex; align-items:center; gap:8px;">
+                        <${Icon} name="settings" /> ตั้งค่าใบนำส่ง
+                    </div>
+
+                    <div class="form-group">
+                        <label>เลือกรายการขนส่ง (CoC)</label>
+                        <select class="form-control" value=${selectedShipmentId} onChange=${e => setSelectedShipmentId(e.target.value)}>
+                            <option value="">-- เลือกรายการขนส่ง --</option>
+                            ${shipments.slice().reverse().map(sv => {
+                                const pv = plantations.find(x => x.id === sv.plantationId);
+                                return html`
+                                    <option key=${sv.id} value=${sv.id}>
+                                        ${sv.id} | ${sv.date.slice(0,10)} | ${pv ? pv.id : sv.plantationId}
+                                    </option>
+                                `;
+                            })}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>ชื่อบริษัท / องค์กรออกเอกสาร</label>
+                        <input type="text" class="form-control" value=${companyName} onChange=${e => setCompanyName(e.target.value)} />
+                    </div>
+
+                    <div class="form-group">
+                        <label>ที่อยู่บริษัท</label>
+                        <input type="text" class="form-control" placeholder="เลขที่, ถนน, ตำบล, อำเภอ, จังหวัด" value=${companyAddress} onChange=${e => setCompanyAddress(e.target.value)} />
+                    </div>
+
+                    <div class="form-group">
+                        <label>ชื่อเจ้าหน้าที่ผู้ออกเอกสาร</label>
+                        <input type="text" class="form-control" placeholder="ชื่อ-นามสกุล" value=${officerName} onChange=${e => setOfficerName(e.target.value)} />
+                    </div>
+
+                    ${!s && html`
+                        <div style="padding:16px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:var(--radius-md); font-size:0.85rem; color:#fca5a5;">
+                            <${Icon} name="alert-circle" /> กรุณาเลือกรายการขนส่งจากเมนูด้านบนเพื่อสร้างใบนำส่ง
+                        </div>
+                    `}
+                </div>
+
+                <!-- Right: Printable Delivery Note -->
+                <div class="printable-report" style="padding:28px; background:#fff; color:#0f172a; font-family:'Sarabun', sans-serif;">
+
+                    <!-- Header -->
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:12px;">
+                        <div>
+                            <div style="font-size:1.5rem; font-weight:800; color:#0f172a;">ใบนำส่งไม้</div>
+                            <div style="font-size:0.8rem; color:#475569;">TIMBER DELIVERY NOTE</div>
+                            <div style="font-size:0.75rem; color:#64748b; margin-top:4px;">ตามพระราชบัญญัติป่าไม้ พ.ศ. 2484 | FSC-STD-40-004 V3-0</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:0.9rem; font-weight:700;">${companyName || '___________________________'}</div>
+                            <div style="font-size:0.75rem; color:#64748b;">${companyAddress || ''}</div>
+                            <div style="margin-top:8px; padding:6px 14px; border:2px solid #0f172a; display:inline-block; font-weight:700; font-size:0.8rem;">
+                                เลขที่: ${s ? s.deliveryNote : 'DN-__________'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; margin-bottom:16px; font-size:0.85rem;">
+                        <div>วันที่ออกเอกสาร: <b>${s ? issueDate : '________________'}</b></div>
+                    </div>
+
+                    <!-- Section A: Source -->
+                    <div style="font-weight:700; font-size:0.9rem; background:#0f172a; color:#fff; padding:5px 10px; margin-bottom:0;">
+                        ก. ข้อมูลผู้นำส่ง / แหล่งกำเนิดไม้
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.82rem; margin-bottom:12px;">
+                        <tbody>
+                            <tr style="border:1px solid #cbd5e1;">
+                                <td style="padding:6px 10px; width:35%; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">ชื่อ-นามสกุลผู้นำส่ง / เจ้าของสวน</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1; font-weight:700;">${p ? p.owner : '___________________________'}</td>
+                                <td style="padding:6px 10px; width:25%; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">โทรศัพท์</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1;">${p ? p.tel : '_______________'}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">รหัสลูกค้า FSC (Customer ID)</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1; font-family:monospace; font-weight:700;">${p ? p.id : '_______________'}</td>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">รหัสแปลงปลูก</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1; font-family:monospace; font-weight:700;">${p ? (p.plotCode || '-') : '___'}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">ที่ตั้งแปลงปลูก</td>
+                                <td colspan="3" style="padding:6px 10px; border:1px solid #cbd5e1;">${p ? `ตำบล${p.subdistrict} อำเภอ${p.district} จังหวัด${p.province}` : '_______________________________________________'}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">ประเภทเอกสารสิทธิ์ที่ดิน</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1;">${p ? (p.landDocType === 'Chanote' ? 'โฉนดที่ดิน (น.ส.4)' : p.landDocType === 'NorSor3' ? 'น.ส.3/น.ส.3ก.' : p.landDocType === 'SorPorKor' ? 'ส.ป.ก. 4-01' : 'อื่น ๆ') : '_______________'}</td>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">เลขที่เอกสารสิทธิ์</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1;">${p ? p.landDocNumber : '_______________'}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Section B: Timber Details -->
+                    <div style="font-weight:700; font-size:0.9rem; background:#0f172a; color:#fff; padding:5px 10px; margin-bottom:0;">
+                        ข. รายละเอียดไม้ที่นำส่ง
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.82rem; margin-bottom:12px;">
+                        <tbody>
+                            <tr>
+                                <td style="padding:6px 10px; width:35%; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">ชนิดไม้ (Species)</td>
+                                <td colspan="3" style="padding:6px 10px; border:1px solid #cbd5e1; font-weight:700;">${p ? p.spcName : '___________________________'}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">ปริมาณ (น้ำหนัก)</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1; font-size:1.1rem; font-weight:700;">${s ? s.weight : '_______'} <span style="font-size:0.8rem; font-weight:400;">ตัน (Metric Ton)</span></td>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">FSC Claim</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1; font-weight:700; color:${s && s.fscClaim === 'FSC 100%' ? '#047857' : '#92400e'};">${s ? s.fscClaim : '_______________'}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">เลขที่ CoC Transaction</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1; font-family:monospace;">${s ? s.id : '_______________'}</td>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">เลขที่ใบชั่งน้ำหนัก</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1; font-family:monospace;">${s ? s.weightTicket : '_______________'}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Section C: Vehicle & Driver -->
+                    <div style="font-weight:700; font-size:0.9rem; background:#0f172a; color:#fff; padding:5px 10px; margin-bottom:0;">
+                        ค. ยานพาหนะและผู้ขับขี่
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.82rem; margin-bottom:12px;">
+                        <tbody>
+                            <tr>
+                                <td style="padding:6px 10px; width:35%; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">เลขทะเบียนรถบรรทุก</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1; font-weight:700; font-family:monospace;">${s ? s.truckPlate : '_______________'}</td>
+                                <td style="padding:6px 10px; width:25%; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">จังหวัดทะเบียน</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1;">${s ? s.truckProvince : '_______________'}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">ชื่อผู้ขับขี่</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1;">${s ? s.driverName : '___________________________'}</td>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">เลขที่ใบขับขี่</td>
+                                <td style="padding:6px 10px; border:1px solid #cbd5e1;">${s ? s.driverLicense : '_______________'}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Section D: Destination -->
+                    <div style="font-weight:700; font-size:0.9rem; background:#0f172a; color:#fff; padding:5px 10px; margin-bottom:0;">
+                        ง. ผู้รับสินค้าปลายทาง
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.82rem; margin-bottom:16px;">
+                        <tbody>
+                            <tr>
+                                <td style="padding:6px 10px; width:35%; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">ชื่อโรงงาน / ผู้รับซื้อ</td>
+                                <td colspan="3" style="padding:6px 10px; border:1px solid #cbd5e1; font-weight:700;">${s ? s.millName : '___________________________'}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:6px 10px; background:#f8fafc; font-weight:600; border:1px solid #cbd5e1;">วันเวลาที่จัดส่ง</td>
+                                <td colspan="3" style="padding:6px 10px; border:1px solid #cbd5e1;">${s ? s.date.replace('T', ' ') : '___________________________'}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Signatures -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-top:20px; padding-top:16px; border-top:1px dashed #cbd5e1;">
+                        <div style="text-align:center; font-size:0.8rem;">
+                            <div style="border-bottom:1px solid #0f172a; height:40px; margin-bottom:6px;"></div>
+                            <div style="font-weight:600;">ลายเซ็นผู้นำส่ง / เกษตรกร</div>
+                            <div style="color:#64748b;">(${p ? p.owner : '________________'})</div>
+                            <div style="color:#64748b; margin-top:4px;">วันที่ ____________</div>
+                        </div>
+                        <div style="text-align:center; font-size:0.8rem;">
+                            <div style="border-bottom:1px solid #0f172a; height:40px; margin-bottom:6px;"></div>
+                            <div style="font-weight:600;">ลายเซ็นผู้รับสินค้า</div>
+                            <div style="color:#64748b;">(โรงงาน / ผู้รับซื้อ)</div>
+                            <div style="color:#64748b; margin-top:4px;">วันที่ ____________</div>
+                        </div>
+                        <div style="text-align:center; font-size:0.8rem;">
+                            <div style="border-bottom:1px solid #0f172a; height:40px; margin-bottom:6px;"></div>
+                            <div style="font-weight:600;">ลายเซ็นเจ้าหน้าที่ออกเอกสาร</div>
+                            <div style="color:#64748b;">(${officerName || '________________'})</div>
+                            <div style="color:#64748b; margin-top:4px;">วันที่ ${today}</div>
+                        </div>
+                    </div>
+
+                    <!-- Footer Note -->
+                    <div style="margin-top:16px; padding:8px 12px; background:#f1f5f9; border-left:3px solid #0f172a; font-size:0.72rem; color:#475569;">
+                        <b>หมายเหตุ:</b> เอกสารนี้ออกตามพระราชบัญญัติป่าไม้ พ.ศ. 2484 มาตรา 54 ว่าด้วยการนำไม้เคลื่อนที่
+                        และมาตรฐาน FSC Chain of Custody (FSC-STD-40-004 V3-0) | ตรวจสอบสถานะ EUDR ผ่านระบบ EU TRACES
+                        | สงวนลิขสิทธิ์ระบบ: FSC &amp; EUDR Compliance Portal (SAAA)
+                    </div>
+                </div>
+
             </div>
         </div>
     `;
@@ -1486,8 +1846,8 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
         const geoJsonPayload = {
             type: "Feature",
             properties: {
-                plantationId: p.id,
-                plantationName: p.name,
+                customerId: p.id,
+                plotCode: p.plotCode || '',
                 ownerName: p.owner,
                 landTitleDeed: p.landDocNumber,
                 landDocType: p.landDocType,
@@ -1528,7 +1888,7 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
             <div class="header-actions">
                 <div class="page-title">
                     <h1>รายงานตรวจสอบข้อมูลวิเคราะห์ความเสี่ยง (Due Diligence / DDS)</h1>
-                    <p>รหัสอ้างอิงเอกสาร: DDS-${p.id}-${new Date().getFullYear()}</p>
+                    <p>รหัสอ้างอิงเอกสาร: DDS-${p.id}-แปลง${p.plotCode || ''}-${new Date().getFullYear()}</p>
                 </div>
                 <div style="display:flex; gap:12px;">
                     <button class="btn btn-outline" onClick=${() => setTab('plantations')}>
@@ -1569,12 +1929,12 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
                     </div>
                     <div class="report-grid">
                         <div class="report-item">
-                            <span>รหัสแปลงทะเบียนที่ดิน / รหัสควบคุม</span>
+                            <span>รหัสลูกค้า FSC (Customer ID)</span>
                             ${p.id}
                         </div>
                         <div class="report-item">
-                            <span>ชื่อแปลงปลูกไม้</span>
-                            ${p.name}
+                            <span>รหัสแปลงปลูก (Plot Code)</span>
+                            ${p.plotCode || '-'}
                         </div>
                         <div class="report-item">
                             <span>ชื่อเจ้าของแปลง / ผู้ทำประโยชน์</span>
@@ -1600,7 +1960,7 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
                     <div class="report-grid">
                         <div class="report-item">
                             <span>ชนิดพืช / ชนิดไม้ (Common Name / Scientific Name)</span>
-                            ยูคาลิปตัส (${p.spcName})
+                            ${p.spcName}
                         </div>
                         <div class="report-item">
                             <span>วันที่ปลูก / อายุไม้</span>
@@ -1637,12 +1997,14 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
                         </div>
                         <ul style="margin-left: 20px; display:flex; flex-direction:column; gap:6px;">
                             <li><b>ระดับความเสี่ยงของวัตถุดิบ (Sourcing Risk Verdict):</b> ${p.fscCWVerdict === 'Low Risk' ? '✅ ความเสี่ยงต่ำ (Low Risk) - ผ่านการประเมินความสอดคล้องตามเอกสารภาคผนวกสมาคม FSC ประเทศไทย' : '❌ ความเสี่ยงเฉพาะเจาะจง (Specified Risk) - จำเป็นต้องดำเนินมาตรการลดความเสี่ยงก่อนทำการผลิต'}</li>
-                            <li><b>หมวดหมู่ความถูกต้อง 5 มิติ:</b> 
-                                [1.ถูกกฎหมาย: ${p.fscSTD1?'ผ่าน':'ไม่ผ่าน'}, 
-                                2.สิทธิชุมชน: ${p.fscSTD2?'ผ่าน':'ไม่ผ่าน'}, 
-                                3.แหล่งนิเวศ HCV: ${p.fscSTD3?'ผ่าน':'ไม่ผ่าน'}, 
-                                4.ไม่แปลงสภาพป่า: ${p.fscSTD4?'ผ่าน':'ไม่ผ่าน'}, 
-                                5.ปราศจาก GMO: ${p.fscSTD5?'ผ่าน':'ไม่ผ่าน'}]
+                            <li><b>ผลการประเมิน 7 หมวดหมู่:</b>
+                                [1.ถูกกฎหมาย: ${p.fscSTD1?'✅':'❌'},
+                                2.สิทธิชุมชน: ${p.fscSTD2?'✅':'❌'},
+                                3.HCV: ${p.fscSTD3?'✅':'❌'},
+                                4.ไม่แปลงสภาพ: ${p.fscSTD4?'✅':'❌'},
+                                5.No GMO: ${p.fscSTD5?'✅':'❌'},
+                                6.แรงงาน: ${(p.fscSTD6!==false)?'✅':'❌'},
+                                7.ไม่ขัดแย้ง: ${(p.fscSTD7!==false)?'✅':'❌'}]
                             </li>
                         </ul>
                     </div>

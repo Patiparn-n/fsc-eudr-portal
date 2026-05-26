@@ -7,16 +7,20 @@ import {
     PlantationForm,
     PlantationList,
     CocLedger,
-    DdsReport
+    DdsReport,
+    TimberDeliveryNote
 } from './components.js';
 
 const html = htm.bind(h);
 
-// Seed Data for Demonstration
+// App data version — bump this to clear localStorage on schema changes
+const APP_VERSION = '2.1';
+
+// Seed Data (new schema: id=FSC-xxxxxx, plotCode=3-digit string)
 const SEED_PLANTATIONS = [
     {
-        id: 'PLT-8711',
-        name: 'แปลงลานสัก 1 (Lansak 1)',
+        id: 'FSC-087115',
+        plotCode: '001',
         owner: 'นายสมชาย ป่าไม้ดี',
         tel: '0812345678',
         subdistrict: 'ลานสัก',
@@ -27,7 +31,7 @@ const SEED_PLANTATIONS = [
         landDocType: 'Chanote',
         landDocNumber: '44109/ระวาง 5038III',
         landDocIssueDate: '2018-05-15',
-        spcName: 'Eucalyptus camaldulensis',
+        spcName: 'Eucalyptus camaldulensis (ยูคาลิปตัสน้ำ)',
         fmCertified: true,
         fmCertNumber: 'FM/TH-006178',
         plantDate: '2021-06-15',
@@ -42,8 +46,11 @@ const SEED_PLANTATIONS = [
         fscSTD3: true,
         fscSTD4: true,
         fscSTD5: true,
+        fscSTD6: true,
+        fscSTD7: true,
         docAttachmentDeed: true,
         docAttachmentOwnerID: true,
+        docAttachmentSaleContract: false,
         treeAge: 59,
         fscCWVerdict: 'Low Risk',
         eudrCompliant: true,
@@ -51,8 +58,8 @@ const SEED_PLANTATIONS = [
         fscStatus: 'FSC 100%'
     },
     {
-        id: 'PLT-9022',
-        name: 'แปลงพนมสารคาม A (Phanomsarakham A)',
+        id: 'FSC-090222',
+        plotCode: '002',
         owner: 'นางสาวสิรินทร์ รักษ์ป่า',
         tel: '0898765432',
         subdistrict: 'เกาะขนุน',
@@ -63,7 +70,7 @@ const SEED_PLANTATIONS = [
         landDocType: 'NorSor3',
         landDocNumber: '8812 ก.',
         landDocIssueDate: '2019-11-20',
-        spcName: 'Eucalyptus camaldulensis',
+        spcName: 'Eucalyptus camaldulensis (ยูคาลิปตัสน้ำ)',
         fmCertified: false,
         fmCertNumber: '',
         plantDate: '2022-05-10',
@@ -83,8 +90,11 @@ const SEED_PLANTATIONS = [
         fscSTD3: true,
         fscSTD4: true,
         fscSTD5: true,
+        fscSTD6: true,
+        fscSTD7: true,
         docAttachmentDeed: true,
         docAttachmentOwnerID: true,
+        docAttachmentSaleContract: true,
         treeAge: 48,
         fscCWVerdict: 'Low Risk',
         eudrCompliant: true,
@@ -92,8 +102,8 @@ const SEED_PLANTATIONS = [
         fscStatus: 'FSC Controlled Wood'
     },
     {
-        id: 'PLT-3044',
-        name: 'แปลงสนามชัยเขต 2 (Sanamchaikhet 2)',
+        id: 'FSC-030441',
+        plotCode: '003',
         owner: 'นายประวิทย์ บุกรุกเลี่ยง',
         tel: '0855551234',
         subdistrict: 'ลาดกระทิง',
@@ -104,7 +114,7 @@ const SEED_PLANTATIONS = [
         landDocType: 'Others',
         landDocNumber: 'ภ.บ.ท. 5 เลขที่ 902',
         landDocIssueDate: '2021-01-20',
-        spcName: 'Eucalyptus camaldulensis',
+        spcName: 'Eucalyptus camaldulensis (ยูคาลิปตัสน้ำ)',
         fmCertified: false,
         fmCertNumber: '',
         plantDate: '2023-01-20',
@@ -123,8 +133,11 @@ const SEED_PLANTATIONS = [
         fscSTD3: false,
         fscSTD4: true,
         fscSTD5: true,
+        fscSTD6: true,
+        fscSTD7: true,
         docAttachmentDeed: false,
         docAttachmentOwnerID: true,
+        docAttachmentSaleContract: false,
         treeAge: 40,
         fscCWVerdict: 'Specified Risk',
         eudrCompliant: false,
@@ -136,7 +149,7 @@ const SEED_PLANTATIONS = [
 const SEED_SHIPMENTS = [
     {
         id: 'TX-554109',
-        plantationId: 'PLT-8711',
+        plantationId: 'FSC-087115',
         date: '2026-05-20T10:30',
         weight: 15.5,
         truckPlate: '82-4411',
@@ -150,7 +163,7 @@ const SEED_SHIPMENTS = [
     },
     {
         id: 'TX-881290',
-        plantationId: 'PLT-9022',
+        plantationId: 'FSC-090222',
         date: '2026-05-24T14:15',
         weight: 24.2,
         truckPlate: '71-8899',
@@ -172,23 +185,31 @@ function App() {
     const [selectedPlantationId, setSelectedPlantationId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
-    // Initial Load & Seeding
+    // Initial Load & Seeding (with version-based migration)
     useEffect(() => {
-        const storedPlt = localStorage.getItem('fsc_eudr_plantations');
-        const storedShip = localStorage.getItem('fsc_eudr_shipments');
-
-        if (storedPlt) {
-            setPlantations(JSON.parse(storedPlt));
-        } else {
+        const storedVersion = localStorage.getItem('fsc_eudr_version');
+        if (storedVersion !== APP_VERSION) {
+            // Clear old schema data and reseed
+            localStorage.setItem('fsc_eudr_version', APP_VERSION);
             localStorage.setItem('fsc_eudr_plantations', JSON.stringify(SEED_PLANTATIONS));
-            setPlantations(SEED_PLANTATIONS);
-        }
-
-        if (storedShip) {
-            setShipments(JSON.parse(storedShip));
-        } else {
             localStorage.setItem('fsc_eudr_shipments', JSON.stringify(SEED_SHIPMENTS));
+            setPlantations(SEED_PLANTATIONS);
             setShipments(SEED_SHIPMENTS);
+        } else {
+            const storedPlt = localStorage.getItem('fsc_eudr_plantations');
+            const storedShip = localStorage.getItem('fsc_eudr_shipments');
+            if (storedPlt) {
+                setPlantations(JSON.parse(storedPlt));
+            } else {
+                localStorage.setItem('fsc_eudr_plantations', JSON.stringify(SEED_PLANTATIONS));
+                setPlantations(SEED_PLANTATIONS);
+            }
+            if (storedShip) {
+                setShipments(JSON.parse(storedShip));
+            } else {
+                localStorage.setItem('fsc_eudr_shipments', JSON.stringify(SEED_SHIPMENTS));
+                setShipments(SEED_SHIPMENTS);
+            }
         }
     }, []);
 
@@ -251,7 +272,7 @@ function App() {
     // Export all data as JSON backup
     const exportAllData = () => {
         const data = {
-            version: '1.0',
+            version: APP_VERSION,
             exportDate: new Date().toISOString(),
             plantations,
             shipments
@@ -279,6 +300,7 @@ function App() {
                     if (confirm(`นำเข้าข้อมูล ${data.plantations.length} แปลงปลูก และ ${data.shipments.length} รายการขนส่ง?\n⚠️ ข้อมูลปัจจุบันในระบบจะถูกแทนที่ทั้งหมด`)) {
                         localStorage.setItem('fsc_eudr_plantations', JSON.stringify(data.plantations));
                         localStorage.setItem('fsc_eudr_shipments', JSON.stringify(data.shipments));
+                        localStorage.setItem('fsc_eudr_version', APP_VERSION);
                         setPlantations(data.plantations);
                         setShipments(data.shipments);
                         alert(`นำเข้าข้อมูลสำเร็จ! (${data.plantations.length} แปลง, ${data.shipments.length} รายการขนส่ง)`);
@@ -336,6 +358,11 @@ function App() {
                     <li>
                         <a class="nav-item ${tab === 'shipments' ? 'active' : ''}" onClick=${() => { setTab('shipments'); closeNav(); }}>
                             <${Icon} name="truck" /> บันทึกการส่งไม้ (CoC)
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-item ${tab === 'timber-note' ? 'active' : ''}" onClick=${() => { setTab('timber-note'); closeNav(); }}>
+                            <${Icon} name="file-check" /> ใบนำส่งไม้ (กรมป่าไม้)
                         </a>
                     </li>
                     <li>
@@ -406,6 +433,15 @@ function App() {
                         plantations=${plantations}
                         onAddShipment=${addShipment}
                         onDeleteShipment=${deleteShipment}
+                        setTab=${setTab}
+                        setSelectedShipmentId=${(id) => { setTab('timber-note'); }}
+                    />
+                `}
+
+                ${tab === 'timber-note' && html`
+                    <${TimberDeliveryNote}
+                        shipments=${shipments}
+                        plantations=${plantations}
                     />
                 `}
 
