@@ -702,7 +702,7 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
         const finalData = {
             ...form,
             treeAge: treeAgeMonths,
-            fscCWVerdict,
+            fscCwVerdict,
             eudrCompliant,
             eudrWarning,
             fscStatus
@@ -871,7 +871,7 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                 `}
                             </div>
 
-                            <!-- ⚠️ Yield Anomaly Warning: age < 4 yr AND yield > 25 t/rai -->
+                            <!-- Yield Anomaly Warning Block -->
                             ${isYoungHighYield && html`
                                 <div class="form-group full-width">
                                     <div style="padding:14px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:var(--radius-md);">
