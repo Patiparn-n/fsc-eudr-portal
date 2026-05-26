@@ -4,51 +4,18 @@ import htm from 'https://esm.sh/htm';
 
 const html = htm.bind(h);
 
-// Species list aligned with FSC CoC Manual — Thai plantation species
+// Species list — ยูคาลิปตัสตามคู่มือ CoC Manual ของบริษัท SAAA
 const SPECIES_LIST = [
-    // ยูคาลิปตัส (Eucalyptus spp.)
     'Eucalyptus camaldulensis (ยูคาลิปตัสน้ำ)',
     'Eucalyptus urophylla (ยูคาลิปตัสใบยาว)',
-    'Eucalyptus hybrid Clone K58 (ยูคาลิปตัสลูกผสม K58)',
-    'Eucalyptus hybrid Clone K72 (ยูคาลิปตัสลูกผสม K72)',
-    'Eucalyptus hybrid Clone KU1 (ยูคาลิปตัสลูกผสม KU1)',
-    'Eucalyptus hybrid Clone AU1 (ยูคาลิปตัสลูกผสม AU1)',
-    'Eucalyptus pellita',
     'Eucalyptus grandis',
-    // กระถิน (Acacia spp.)
-    'Acacia mangium (กระถินณรงค์)',
-    'Acacia auriculiformis (กระถินออสเตรเลีย)',
-    'Acacia hybrid (กระถินลูกผสม)',
-    'Acacia crassicarpa',
-    // ไม้สัก
-    'Tectona grandis (สักทอง)',
-    // สน (Pine spp.)
-    'Pinus kesiya (สนสามใบ)',
-    'Pinus merkusii (สนสองใบ)',
-    'Pinus caribaea (สนแคริบเบียน)',
-    // ยางพารา
-    'Hevea brasiliensis (ยางพารา)',
-    // สนประดิพัทธ์
-    'Casuarina junghuhniana (สนประดิพัทธ์)',
-    'Casuarina equisetifolia (สนทะเล)',
-    // ไม้ประดับ/ไม้มูลค่าสูง
-    'Dalbergia cochinchinensis (พะยูง)',
-    'Pterocarpus macrocarpus (ประดู่ป่า)',
-    'Dipterocarpus alatus (ยางนา)',
-    'Shorea roxburghii (พลวง)',
-    'Tectona grandis x T. hamiltoniana (สักลูกผสม)',
-    // ไม้โตเร็ว/ไม้เศรษฐกิจอื่น ๆ
-    'Gmelina arborea (ยอป่า / เกด)',
-    'Melia azedarach (สะเดาปลอม)',
-    'Azadirachta indica (สะเดาอินเดีย)',
-    'Swietenia macrophylla (มะฮอกกานีใบใหญ่)',
-    'Paulownia fortunei (พอลโลเนีย)',
-    'Aquilaria crassna (กฤษณา)',
-    // ไผ่ (Bamboo spp.)
-    'Dendrocalamus asper (ไผ่ตง)',
-    'Bambusa bambos (ไผ่ป่า)',
-    'Bambusa vulgaris (ไผ่สีสุก)',
-    'Phyllostachys sp. (ไผ่จีน)',
+    'Eucalyptus deglupta',
+    'Eucalyptus brassiana x Eucalyptus grandis (ลูกผสม BG)',
+    'Eucalyptus camaldulensis x Eucalyptus brassiana (ลูกผสม CB)',
+    'Eucalyptus camaldulensis x Eucalyptus deglupta (ลูกผสม CD)',
+    'Eucalyptus camaldulensis x Eucalyptus grandis (ลูกผสม CG)',
+    'Eucalyptus camaldulensis x Eucalyptus pellita (ลูกผสม CP)',
+    'Eucalyptus spp. (ยูคาลิปตัสชนิดอื่น)',
 ];
 
 // Helper: consistent display label for a plantation record
@@ -381,7 +348,7 @@ export function Dashboard({ plantations, shipments, setTab, setSelectedPlantatio
                 title: `พบข้อบกพร่องด้าน EUDR: ${label}`,
                 msg: `ที่ดินไม่ผ่านข้อกำหนดเนื่องจาก: ${p.eudrWarning || 'ไม่ได้ระบุเหตุผล'}`
             });
-        } else if (p.fscStatus === 'FSC Controlled Wood' && p.fscCWVerdict === 'Specified Risk') {
+        } else if (p.fscStatus === 'FSC Controlled Wood' && p.fscCwVerdict === 'Specified Risk') {
             warnings.push({
                 type: 'warning',
                 title: `ประเมินความเสี่ยง FSC CW สูง: ${label}`,
@@ -560,13 +527,14 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
     const defaultPlantation = editMode
         ? plantations.find(p => p.id === editPlantationId)
         : {
-            id: 'FSC-' + String(Math.floor(100000 + Math.random() * 900000)),
+            id: '',                         // A2: user-entered 6 digits; stored as FSC-xxxxxx
             plotCode: '',
             owner: '',
             tel: '',
             subdistrict: '',
             district: '',
             province: '',
+            targetMill: '',                 // B3: โรงงานปลายทาง
             areaRai: 0,
             areaHectares: 0,
             landDocType: 'Chanote',
@@ -580,11 +548,22 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
             estVolume: 0,
             geoType: 'point', // 'point' | 'polygon'
             coords: null,     // {lat, lng} or Array of {lat, lng}
+            // B2: HCV Risk Assessment (3.1–3.6)
+            hcvQ1: false,    // 3.1 อยู่ในเขตป่าสงวน? ใช่=Non-compliant
+            hcvQ2: true,     // 3.2 มีเอกสารสิทธิ์? ไม่ใช่=Non-compliant
+            hcvQ3: false,    // 3.3 มีพื้นที่ HCV? ใช่=Specified Risk
+            hcvQ4: false,    // 3.4 มีสัตว์ป่าคุ้มครอง? ใช่=Specified Risk
+            hcvQ5: false,    // 3.5 มีข้อพิพาทชุมชน? ใช่=Specified Risk
+            hcvQ6: false,    // 3.6 ใช้สารเคมีต้องห้าม? ใช่=Specified Risk
+            hcvQ3Note: '',
+            hcvQ4Note: '',
+            hcvQ5Note: '',
+            hcvQ6Note: '',
             deforestationFreeCheck: true,
             forestProtectionZoneCheck: true,
             fscSTD1: true, // Legality
             fscSTD2: true, // Rights
-            fscSTD3: true, // HCV
+            fscSTD3: true, // HCV (overall checkbox, informed by hcvQ1-6)
             fscSTD4: true, // Non-conversion
             fscSTD5: true, // GMO-free
             fscSTD6: true, // Labour rights
@@ -655,21 +634,34 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
     // กรณีอายุต่ำกว่า 4 ปี (48 เดือน) ผลผลิตสูงสุดไม่ควรเกิน 25 ตัน/ไร่
     const isYoungHighYield = treeAgeMonths > 0 && treeAgeMonths < 48 && yieldPerRai > 25;
 
-    // FSC Controlled Wood Risk Assessment Calculation (7 categories)
+    // A1: Geo-type mismatch detection
+    const expectedGeoType = form.areaHectares > 4 ? 'polygon' : 'point';
+    const alreadyDrawnCheck = form.geoType === 'point'
+        ? !!(form.coords && form.coords.lat)
+        : (Array.isArray(form.coords) && form.coords.length > 0);
+    const geoMismatch = alreadyDrawnCheck && (form.geoType !== expectedGeoType);
+
+    // B2: HCV Risk Assessment compliance
+    const hcvNonCompliant = form.hcvQ1 || !form.hcvQ2;
+    const hcvSpecifiedRisk = form.hcvQ3 || form.hcvQ4 || form.hcvQ5 || form.hcvQ6;
+
+    // FSC Controlled Wood Risk Assessment Calculation (7 categories + HCV)
     const isFscCwPass = form.fscSTD1 && form.fscSTD2 && form.fscSTD3 && form.fscSTD4 && form.fscSTD5 && form.fscSTD6 && form.fscSTD7;
-    const fscCwVerdict = isFscCwPass ? 'Low Risk' : 'Specified Risk';
+    const fscCwVerdict = (isFscCwPass && !hcvSpecifiedRisk && !hcvNonCompliant) ? 'Low Risk' : 'Specified Risk';
 
     // EUDR Overall Compliance Calculation
-    // Plot must have geolocations, deforestationFreeCheck, forestProtectionZoneCheck
-    const hasCoordinates = form.geoType === 'point' 
+    // Plot must have geolocations, deforestationFreeCheck, forestProtectionZoneCheck, and pass HCV
+    const hasCoordinates = form.geoType === 'point'
         ? (form.coords && form.coords.lat)
         : (Array.isArray(form.coords) && form.coords.length >= 3);
-    
-    const eudrCompliant = form.deforestationFreeCheck && form.forestProtectionZoneCheck && hasCoordinates;
-    const eudrWarning = !hasCoordinates 
-        ? 'ยังไม่ได้กำหนดค่าพิกัดแผนที่ที่ถูกต้องตามกฎเกณฑ์ (Point/Polygon)'
-        : (!form.deforestationFreeCheck ? 'พบข้อมูลการถางป่าธรรมชาติหลังเส้นตายวันที่ 31 ธ.ค. 2020' : 
-           (!form.forestProtectionZoneCheck ? 'แปลงที่ดินคาบเกี่ยวกับเขตพื้นที่ป่าสงวนธรรมชาติหรือป่าอนุรักษ์ตามกฎหมาย' : ''));
+
+    const eudrCompliant = form.deforestationFreeCheck && form.forestProtectionZoneCheck && hasCoordinates && !hcvNonCompliant;
+    const eudrWarning = hcvNonCompliant
+        ? (form.hcvQ1 ? 'แปลงอยู่ในเขตป่าสงวนหรือพื้นที่คุ้มครองตามกฎหมาย (ข้อ 3.1)' : 'ที่ดินไม่มีเอกสารสิทธิ์ถูกต้องตามกฎหมาย (ข้อ 3.2)')
+        : !hasCoordinates
+            ? 'ยังไม่ได้กำหนดค่าพิกัดแผนที่ที่ถูกต้องตามกฎเกณฑ์ (Point/Polygon)'
+            : (!form.deforestationFreeCheck ? 'พบข้อมูลการถางป่าธรรมชาติหลังเส้นตายวันที่ 31 ธ.ค. 2020' :
+               (!form.forestProtectionZoneCheck ? 'แปลงที่ดินคาบเกี่ยวกับเขตพื้นที่ป่าสงวนธรรมชาติหรือป่าอนุรักษ์ตามกฎหมาย' : ''));
 
     // FSC status: FM Certificate = FSC 100%, else follow CW verdict
     const fscStatus = form.fmCertified
@@ -679,6 +671,21 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
     const handleSubmit = (e) => {
         e.preventDefault();
 
+        // A2: Validate Customer ID format FSC-xxxxxx (6 digits)
+        if (!form.id || !/^FSC-\d{6}$/.test(form.id)) {
+            alert('กรุณากรอกรหัสลูกค้า (Customer ID) ให้ครบ 6 หลักตัวเลข รูปแบบ FSC-xxxxxx');
+            return;
+        }
+
+        // A1: Block submit when geo type mismatches area size
+        if (geoMismatch) {
+            alert(
+                'รูปแบบพิกัดไม่ตรงกับขนาดพื้นที่ที่กรอก\n' +
+                'กรุณาคลิกปุ่ม "รีเซ็ตพิกัด" แล้ววาดพิกัดใหม่ให้ถูกต้องก่อนบันทึก'
+            );
+            return;
+        }
+
         if (!hasCoordinates) {
             alert(
                 'กรุณาระบุพิกัดแปลงบนแผนที่ก่อนบันทึก\n' +
@@ -687,6 +694,20 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                     : 'คลิกบนแผนที่เพื่อระบุจุด Point ของแปลง')
             );
             return;
+        }
+
+        // B2: Require detail notes for HCV Specified Risk items
+        const hcvSpecItems = [
+            { key: 'hcvQ3', note: 'hcvQ3Note', label: 'ข้อ 3.3 (พื้นที่ HCV)' },
+            { key: 'hcvQ4', note: 'hcvQ4Note', label: 'ข้อ 3.4 (สัตว์ป่าคุ้มครอง)' },
+            { key: 'hcvQ5', note: 'hcvQ5Note', label: 'ข้อ 3.5 (ข้อพิพาทชุมชน)' },
+            { key: 'hcvQ6', note: 'hcvQ6Note', label: 'ข้อ 3.6 (สารเคมีต้องห้าม)' },
+        ];
+        for (const item of hcvSpecItems) {
+            if (form[item.key] && !form[item.note].trim()) {
+                alert(`${item.label}: กรุณาระบุรายละเอียดและมาตรการลดความเสี่ยงก่อนบันทึก`);
+                return;
+            }
         }
 
         // ตรวจสอบกรณีอายุต่ำกว่า 4 ปี และผลผลิตเกิน 25 ตัน/ไร่ ต้องมีหลักฐาน
@@ -703,6 +724,8 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
             ...form,
             treeAge: treeAgeMonths,
             fscCwVerdict,
+            hcvNonCompliant,
+            hcvSpecifiedRisk,
             eudrCompliant,
             eudrWarning,
             fscStatus
@@ -734,9 +757,30 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                 <${Icon} name="info" /> 1. ข้อมูลทั่วไปแปลงที่ดิน
                             </div>
 
-                            <div class="form-group">
-                                <label>รหัสลูกค้า (Customer ID)</label>
-                                <input type="text" class="form-control" name="id" value=${form.id} disabled title="สร้างโดยอัตโนมัติ รูปแบบ FSC-xxxxxx" />
+                            <div class="form-group full-width">
+                                <label>รหัสลูกค้า (Customer ID) <span style="color:var(--danger);">*</span></label>
+                                <div style="display:flex; align-items:stretch;">
+                                    <span style="display:flex; align-items:center; padding:0 12px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); border-right:0; border-radius:var(--radius-md) 0 0 var(--radius-md); font-family:monospace; font-weight:700; color:var(--primary); white-space:nowrap; font-size:1rem;">FSC-</span>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        style="border-radius:0 var(--radius-md) var(--radius-md) 0; font-family:monospace; font-size:1.1rem; letter-spacing:3px;"
+                                        value=${form.id.replace('FSC-', '')}
+                                        onInput=${(e) => {
+                                            const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                            e.target.value = digits;
+                                            setForm(f => ({ ...f, id: digits ? 'FSC-' + digits : '' }));
+                                        }}
+                                        placeholder="000000"
+                                        maxlength="6"
+                                        pattern="[0-9]{6}"
+                                        required
+                                        title="กรอกรหัส 6 หลักจากระบบภายในของบริษัท"
+                                    />
+                                </div>
+                                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">
+                                    กรอกเลข 6 หลักจากระบบภายในบริษัท — จะแสดงผลเป็น FSC-xxxxxx
+                                </div>
                             </div>
 
                             <div class="form-group">
@@ -780,6 +824,11 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                 <input type="text" class="form-control" name="subdistrict" value=${form.subdistrict} onChange=${handleChange} placeholder="เช่น ลานสัก" required />
                             </div>
 
+                            <div class="form-group full-width">
+                                <label>โรงงานปลายทาง (Target Mill) <span style="font-size:0.75rem; color:var(--text-muted);">(ใช้เชื่อมกับ CoC Ledger)</span></label>
+                                <input type="text" class="form-control" name="targetMill" value=${form.targetMill || ''} onChange=${handleChange} placeholder="เช่น โรงงาน Double A สาขาท่าตูม / บจก.สยามเซลลูโลส" />
+                            </div>
+
                             <div class="form-group">
                                 <label>ประเภทเอกสารสิทธิ์ที่ดิน</label>
                                 <select class="form-control" name="landDocType" value=${form.landDocType} onChange=${handleChange}>
@@ -816,7 +865,7 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                     <${Icon} name=${form.geoType === 'polygon' ? 'pentagon' : 'map-pin'} />
                                     <div style="flex:1; font-size:0.82rem;">
                                         <b style="color:${form.geoType === 'polygon' ? 'var(--warning)' : 'var(--primary)'};">
-                                            รูปแบบพิกัด EUDR: ${form.geoType === 'polygon' ? 'Map Polygon (≥ 25 ไร่)' : 'Point Geolocation (< 25 ไร่)'}
+                                            รูปแบบพิกัด EUDR: ${form.geoType === 'polygon' ? 'Map Polygon (25 ไร่ขึ้นไป)' : 'Point Geolocation (น้อยกว่า 25 ไร่)'}
                                         </b>
                                         <div style="color:var(--text-muted); margin-top:2px;">
                                             ${form.geoType === 'polygon'
@@ -829,6 +878,30 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                                     </span>
                                 </div>
                             </div>
+
+                            <!-- A1: Geo mismatch warning — shows when area crosses 25 rai threshold after coords drawn -->
+                            ${geoMismatch && html`
+                                <div class="form-group full-width">
+                                    <div style="display:flex; flex-direction:column; gap:10px; padding:14px 16px; background:rgba(245,158,11,0.1); border:2px solid rgba(245,158,11,0.45); border-radius:var(--radius-md);">
+                                        <div style="display:flex; align-items:center; gap:8px; font-weight:700; color:var(--warning); font-size:0.9rem;">
+                                            <${Icon} name="alert-triangle" /> พิกัดที่วาดไว้ไม่ตรงกับขนาดพื้นที่ปัจจุบัน
+                                        </div>
+                                        <p style="font-size:0.82rem; color:#fcd34d; margin:0;">
+                                            พื้นที่ <b>${form.areaRai} ไร่</b> (${form.areaHectares} ฮก.) ต้องใช้รูปแบบ
+                                            <b>${expectedGeoType === 'polygon' ? 'Polygon (25 ไร่ขึ้นไป)' : 'Point (น้อยกว่า 25 ไร่)'}</b>
+                                            แต่ปัจจุบันวาดเป็น <b>${form.geoType === 'polygon' ? 'Polygon' : 'Point'}</b>
+                                        </p>
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline"
+                                            style="align-self:flex-start; border-color:rgba(245,158,11,0.5); color:var(--warning); font-size:0.82rem; padding:6px 14px;"
+                                            onClick=${() => setForm(f => ({ ...f, geoType: expectedGeoType, coords: expectedGeoType === 'polygon' ? [] : null }))}
+                                        >
+                                            <${Icon} name="refresh-cw" /> รีเซ็ตพิกัด — เปลี่ยนเป็นโหมด ${expectedGeoType === 'polygon' ? 'Polygon' : 'Point'}
+                                        </button>
+                                    </div>
+                                </div>
+                            `}
                         </div>
 
                         <div class="form-grid">
@@ -926,10 +999,196 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                             `}
                         </div>
 
-                        <!-- 3. EUDR Compliance Status Checklist -->
+                        <!-- 3. HCV Risk Assessment — แบบประเมินความเสี่ยงพื้นที่แปลงไม้ -->
                         <div class="form-grid">
                             <div class="form-section-title">
-                                <${Icon} name="shield-check" /> 3. การประเมินความสอดคล้องด้าน EUDR (EU Deforestation Regulation)
+                                <${Icon} name="shield-alert" /> 3. แบบประเมินความเสี่ยงพื้นที่แปลงไม้ (HCV Risk Assessment)
+                            </div>
+
+                            <div class="form-group full-width" style="margin-bottom:-4px;">
+                                <div style="font-size:0.78rem; color:var(--text-muted); background:rgba(245,158,11,0.05); border:1px dashed rgba(245,158,11,0.25); padding:10px 12px; border-radius:var(--radius-md);">
+                                    ข้อ 3.1 ตอบ "ใช่" หรือข้อ 3.2 ตอบ "ไม่ใช่" → แปลง <b style="color:var(--danger);">ไม่ผ่านเกณฑ์ (Non-Compliant)</b> |
+                                    ข้อ 3.3–3.6 ตอบ "ใช่" → ระดับความเสี่ยง <b style="color:var(--warning);">Specified Risk</b> และต้องระบุมาตรการลดความเสี่ยง
+                                </div>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <div class="checklist-container">
+
+                                    <!-- 3.1 -->
+                                    <div class="checklist-item" style="${form.hcvQ1 ? 'border:1px solid rgba(239,68,68,0.4); border-radius:var(--radius-md); background:rgba(239,68,68,0.04);' : ''}">
+                                        <div class="checklist-content" style="flex:1;">
+                                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                                                <div style="flex:1;">
+                                                    <h5 style="color:${form.hcvQ1 ? '#f87171' : 'inherit'};">3.1 แปลงตั้งอยู่ในเขตป่าสงวนแห่งชาติ เขตรักษาพันธุ์สัตว์ป่า อุทยานแห่งชาติ หรือพื้นที่คุ้มครองตามกฎหมาย?</h5>
+                                                    <p style="color:${form.hcvQ1 ? '#fca5a5' : 'var(--text-muted)'}; font-size:0.78rem;">ตอบ "ใช่" → แปลงไม่ผ่านเกณฑ์ EUDR และ FSC (Non-Compliant)</p>
+                                                </div>
+                                                <div style="display:flex; gap:16px; flex-shrink:0; align-items:center; padding-top:4px;">
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${!form.hcvQ1 ? 'var(--primary)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ1r" checked=${!form.hcvQ1} onChange=${() => setForm(f => ({...f, hcvQ1: false}))} /> ไม่ใช่
+                                                    </label>
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${form.hcvQ1 ? 'var(--danger)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ1r" checked=${form.hcvQ1} onChange=${() => setForm(f => ({...f, hcvQ1: true}))} /> ใช่
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            ${form.hcvQ1 && html`
+                                                <div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:6px; font-size:0.8rem; color:#f87171;">
+                                                    ❌ แปลงนี้ไม่ผ่านเกณฑ์ — ต้องตรวจสอบและแก้ไขเอกสารสิทธิ์ก่อนดำเนินการ
+                                                </div>
+                                            `}
+                                        </div>
+                                    </div>
+
+                                    <!-- 3.2 -->
+                                    <div class="checklist-item" style="${!form.hcvQ2 ? 'border:1px solid rgba(239,68,68,0.4); border-radius:var(--radius-md); background:rgba(239,68,68,0.04);' : ''}">
+                                        <div class="checklist-content" style="flex:1;">
+                                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                                                <div style="flex:1;">
+                                                    <h5 style="color:${!form.hcvQ2 ? '#f87171' : 'inherit'};">3.2 ที่ดินมีเอกสารสิทธิ์หรือสิทธิ์ครอบครองถูกต้องตามกฎหมายไทย?</h5>
+                                                    <p style="color:${!form.hcvQ2 ? '#fca5a5' : 'var(--text-muted)'}; font-size:0.78rem;">ตอบ "ไม่ใช่" → แปลงไม่ผ่านเกณฑ์ (Non-Compliant) ต้องดำเนินการจัดทำเอกสารสิทธิ์ก่อน</p>
+                                                </div>
+                                                <div style="display:flex; gap:16px; flex-shrink:0; align-items:center; padding-top:4px;">
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${!form.hcvQ2 ? 'var(--danger)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ2r" checked=${!form.hcvQ2} onChange=${() => setForm(f => ({...f, hcvQ2: false}))} /> ไม่ใช่
+                                                    </label>
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${form.hcvQ2 ? 'var(--primary)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ2r" checked=${form.hcvQ2} onChange=${() => setForm(f => ({...f, hcvQ2: true}))} /> ใช่
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            ${!form.hcvQ2 && html`
+                                                <div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:6px; font-size:0.8rem; color:#f87171;">
+                                                    ❌ แปลงนี้ไม่ผ่านเกณฑ์ — ต้องมีเอกสารสิทธิ์ (โฉนด/น.ส.3/ส.ป.ก. หรือเทียบเท่า)
+                                                </div>
+                                            `}
+                                        </div>
+                                    </div>
+
+                                    <!-- 3.3 -->
+                                    <div class="checklist-item" style="${form.hcvQ3 ? 'border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-md); background:rgba(245,158,11,0.04);' : ''}">
+                                        <div class="checklist-content" style="flex:1;">
+                                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                                                <div style="flex:1;">
+                                                    <h5 style="color:${form.hcvQ3 ? 'var(--warning)' : 'inherit'};">3.3 มีพื้นที่ที่มีคุณค่าการอนุรักษ์สูง (HCV) อยู่ภายในหรือติดกับแปลงปลูก?</h5>
+                                                    <p style="color:var(--text-muted); font-size:0.78rem;">เช่น พื้นที่ชุ่มน้ำ ป่าริมน้ำ แหล่งที่อยู่อาศัยของสัตว์หายาก หรือพืชที่มีคุณค่าต่อระบบนิเวศ</p>
+                                                </div>
+                                                <div style="display:flex; gap:16px; flex-shrink:0; align-items:center; padding-top:4px;">
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${!form.hcvQ3 ? 'var(--primary)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ3r" checked=${!form.hcvQ3} onChange=${() => setForm(f => ({...f, hcvQ3: false, hcvQ3Note: ''}))} /> ไม่ใช่
+                                                    </label>
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${form.hcvQ3 ? 'var(--warning)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ3r" checked=${form.hcvQ3} onChange=${() => setForm(f => ({...f, hcvQ3: true}))} /> ใช่
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            ${form.hcvQ3 && html`
+                                                <div style="margin-top:8px;">
+                                                    <label style="font-size:0.8rem; font-weight:600; color:var(--warning); display:block; margin-bottom:4px;">มาตรการลดความเสี่ยงและรายละเอียด (Specified Risk) <span style="color:var(--danger);">*</span></label>
+                                                    <textarea class="form-control" name="hcvQ3Note" rows="2" style="font-size:0.82rem;" placeholder="ระบุมาตรการที่ดำเนินการเพื่อปกป้องพื้นที่ HCV เช่น กันชนระยะ 50 ม. ไม่ใช้สารเคมีในพื้นที่ติดกัน ฯลฯ" value=${form.hcvQ3Note || ''} onChange=${handleChange}></textarea>
+                                                </div>
+                                            `}
+                                        </div>
+                                    </div>
+
+                                    <!-- 3.4 -->
+                                    <div class="checklist-item" style="${form.hcvQ4 ? 'border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-md); background:rgba(245,158,11,0.04);' : ''}">
+                                        <div class="checklist-content" style="flex:1;">
+                                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                                                <div style="flex:1;">
+                                                    <h5 style="color:${form.hcvQ4 ? 'var(--warning)' : 'inherit'};">3.4 มีสัตว์ป่าคุ้มครองหรือพืชพรรณหายากตามบัญชี IUCN หรือกฎหมายไทยพบในพื้นที่?</h5>
+                                                    <p style="color:var(--text-muted); font-size:0.78rem;">ตรวจสอบจากฐานข้อมูลกรมอุทยานแห่งชาติ สัตว์ป่าและพันธุ์พืช หรือผลสำรวจภาคสนาม</p>
+                                                </div>
+                                                <div style="display:flex; gap:16px; flex-shrink:0; align-items:center; padding-top:4px;">
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${!form.hcvQ4 ? 'var(--primary)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ4r" checked=${!form.hcvQ4} onChange=${() => setForm(f => ({...f, hcvQ4: false, hcvQ4Note: ''}))} /> ไม่ใช่
+                                                    </label>
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${form.hcvQ4 ? 'var(--warning)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ4r" checked=${form.hcvQ4} onChange=${() => setForm(f => ({...f, hcvQ4: true}))} /> ใช่
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            ${form.hcvQ4 && html`
+                                                <div style="margin-top:8px;">
+                                                    <label style="font-size:0.8rem; font-weight:600; color:var(--warning); display:block; margin-bottom:4px;">มาตรการลดความเสี่ยงและรายละเอียด <span style="color:var(--danger);">*</span></label>
+                                                    <textarea class="form-control" name="hcvQ4Note" rows="2" style="font-size:0.82rem;" placeholder="ระบุชนิดสัตว์/พืช มาตรการอนุรักษ์ที่ดำเนินการ เช่น ไม่ล่าสัตว์ รักษาพื้นที่อยู่อาศัย ฯลฯ" value=${form.hcvQ4Note || ''} onChange=${handleChange}></textarea>
+                                                </div>
+                                            `}
+                                        </div>
+                                    </div>
+
+                                    <!-- 3.5 -->
+                                    <div class="checklist-item" style="${form.hcvQ5 ? 'border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-md); background:rgba(245,158,11,0.04);' : ''}">
+                                        <div class="checklist-content" style="flex:1;">
+                                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                                                <div style="flex:1;">
+                                                    <h5 style="color:${form.hcvQ5 ? 'var(--warning)' : 'inherit'};">3.5 มีข้อพิพาทหรือร้องเรียนจากชุมชนท้องถิ่นหรือชนเผ่าพื้นเมืองเกี่ยวกับสิทธิ์ที่ดิน?</h5>
+                                                    <p style="color:var(--text-muted); font-size:0.78rem;">รวมถึงการใช้ที่ดินตามสิทธิ์ดั้งเดิม วิถีชีวิต หรือแหล่งทรัพยากรที่ชุมชนพึ่งพา</p>
+                                                </div>
+                                                <div style="display:flex; gap:16px; flex-shrink:0; align-items:center; padding-top:4px;">
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${!form.hcvQ5 ? 'var(--primary)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ5r" checked=${!form.hcvQ5} onChange=${() => setForm(f => ({...f, hcvQ5: false, hcvQ5Note: ''}))} /> ไม่ใช่
+                                                    </label>
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${form.hcvQ5 ? 'var(--warning)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ5r" checked=${form.hcvQ5} onChange=${() => setForm(f => ({...f, hcvQ5: true}))} /> ใช่
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            ${form.hcvQ5 && html`
+                                                <div style="margin-top:8px;">
+                                                    <label style="font-size:0.8rem; font-weight:600; color:var(--warning); display:block; margin-bottom:4px;">รายละเอียดข้อพิพาทและมาตรการแก้ไข <span style="color:var(--danger);">*</span></label>
+                                                    <textarea class="form-control" name="hcvQ5Note" rows="2" style="font-size:0.82rem;" placeholder="ระบุลักษณะข้อพิพาท มาตรการที่ดำเนินการ เช่น ทำบันทึกข้อตกลงชุมชน รับฟังความคิดเห็น ฯลฯ" value=${form.hcvQ5Note || ''} onChange=${handleChange}></textarea>
+                                                </div>
+                                            `}
+                                        </div>
+                                    </div>
+
+                                    <!-- 3.6 -->
+                                    <div class="checklist-item" style="${form.hcvQ6 ? 'border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-md); background:rgba(245,158,11,0.04);' : ''}">
+                                        <div class="checklist-content" style="flex:1;">
+                                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                                                <div style="flex:1;">
+                                                    <h5 style="color:${form.hcvQ6 ? 'var(--warning)' : 'inherit'};">3.6 มีการใช้สารเคมีที่อยู่ในรายการต้องห้ามตาม FSC Pesticides Policy (FSC-POL-30-001) ในพื้นที่?</h5>
+                                                    <p style="color:var(--text-muted); font-size:0.78rem;">ตรวจสอบรายการสารเคมีต้องห้ามจาก FSC Hazardous Pesticides List ก่อนตอบ</p>
+                                                </div>
+                                                <div style="display:flex; gap:16px; flex-shrink:0; align-items:center; padding-top:4px;">
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${!form.hcvQ6 ? 'var(--primary)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ6r" checked=${!form.hcvQ6} onChange=${() => setForm(f => ({...f, hcvQ6: false, hcvQ6Note: ''}))} /> ไม่ใช่
+                                                    </label>
+                                                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem; color:${form.hcvQ6 ? 'var(--warning)' : 'var(--text-muted)'}; white-space:nowrap;">
+                                                        <input type="radio" name="hcvQ6r" checked=${form.hcvQ6} onChange=${() => setForm(f => ({...f, hcvQ6: true}))} /> ใช่
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            ${form.hcvQ6 && html`
+                                                <div style="margin-top:8px;">
+                                                    <label style="font-size:0.8rem; font-weight:600; color:var(--warning); display:block; margin-bottom:4px;">รายชื่อสารเคมีและมาตรการทดแทน <span style="color:var(--danger);">*</span></label>
+                                                    <textarea class="form-control" name="hcvQ6Note" rows="2" style="font-size:0.82rem;" placeholder="ระบุชื่อสารเคมี เหตุผลที่ต้องใช้ และแผนการเปลี่ยนเป็นสารทดแทนที่ได้รับอนุญาต" value=${form.hcvQ6Note || ''} onChange=${handleChange}></textarea>
+                                                </div>
+                                            `}
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                ${(hcvNonCompliant || hcvSpecifiedRisk) && html`
+                                    <div style="margin-top:10px; padding:10px 14px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:var(--radius-md); font-size:0.8rem;">
+                                        ${hcvNonCompliant && html`<div style="color:#f87171; font-weight:700; margin-bottom:4px;">❌ ผลการประเมิน HCV: ไม่ผ่านเกณฑ์ (Non-Compliant) — แปลงนี้ไม่สามารถนำเข้าสู่ห่วงโซ่ FSC/EUDR ได้ จนกว่าจะแก้ไขให้ผ่านเกณฑ์</div>`}
+                                        ${!hcvNonCompliant && hcvSpecifiedRisk && html`<div style="color:#fcd34d; font-weight:700;">⚠️ ผลการประเมิน HCV: Specified Risk — ต้องมีมาตรการลดความเสี่ยงที่ชัดเจนก่อนออก FSC Claim</div>`}
+                                    </div>
+                                `}
+                                ${!hcvNonCompliant && !hcvSpecifiedRisk && html`
+                                    <div style="margin-top:10px; padding:8px 14px; background:rgba(16,185,129,0.07); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-md); font-size:0.8rem; color:var(--primary);">
+                                        ✅ ผลการประเมิน HCV: Low Risk — แปลงผ่านการประเมินความเสี่ยงพื้นที่ทุกข้อ
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+
+                        <!-- 4. EUDR Compliance Status Checklist -->
+                        <div class="form-grid">
+                            <div class="form-section-title">
+                                <${Icon} name="shield-check" /> 4. การประเมินความสอดคล้องด้าน EUDR (EU Deforestation Regulation)
                             </div>
                             
                             <div class="form-group full-width">
@@ -981,10 +1240,10 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                             </div>
                         </div>
 
-                        <!-- 4. FSC Controlled Wood Risk Self-Assessment (7 categories) -->
+                        <!-- 5. FSC Controlled Wood Risk Self-Assessment (7 categories) -->
                         <div class="form-grid">
                             <div class="form-section-title">
-                                <${Icon} name="check-square" /> 4. การประเมินตนเองตามเอกสารประเมินความเสี่ยงแปลง (FSC-STD-40-005 V3-1)
+                                <${Icon} name="check-square" /> 5. การประเมินตนเองตามเอกสารประเมินความเสี่ยงแปลง (FSC-STD-40-005 V3-1)
                             </div>
                             <div class="form-group full-width" style="margin-bottom:-4px;">
                                 <div style="font-size:0.78rem; color:var(--text-muted); background:rgba(59,130,246,0.05); border:1px dashed rgba(59,130,246,0.2); padding:10px 12px; border-radius:var(--radius-md);">
@@ -1067,10 +1326,10 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                             </div>
                         </div>
 
-                        <!-- 5. Verification Document Attachment Uploads -->
+                        <!-- 6. Verification Document Attachment Uploads -->
                         <div class="form-grid">
                             <div class="form-section-title">
-                                <${Icon} name="paperclip" /> 5. แนบเอกสารสิทธิ์ประกอบระบบ DDS
+                                <${Icon} name="paperclip" /> 6. แนบเอกสารสิทธิ์ประกอบระบบ DDS
                             </div>
 
                             <div class="form-group">
@@ -1414,7 +1673,7 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
         driverName: '',
         driverLicense: '',
         weightTicket: 'WT-' + Math.floor(100000 + Math.random() * 900000),
-        deliveryNote: 'DN-' + Math.floor(10000 + Math.random() * 90000),
+        deliveryNote: '',   // A7: user-entered DO number from internal system
         millName: '',
         fscClaim: 'FSC Controlled Wood'
     });
@@ -1435,7 +1694,13 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
     const handleSelectPlantation = (e) => {
         const pId = e.target.value;
         const p = plantations.find(x => x.id === pId);
-        setForm(f => ({ ...f, plantationId: pId, fscClaim: p ? p.fscStatus : 'FSC Controlled Wood' }));
+        setForm(f => ({
+            ...f,
+            plantationId: pId,
+            fscClaim: p ? p.fscStatus : 'FSC Controlled Wood',
+            // B3: auto-fill Target Mill from plantation record
+            millName: (p && p.targetMill) ? p.targetMill : f.millName
+        }));
     };
 
     const handleChange = (e) => {
@@ -1459,7 +1724,7 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
             driverName: '',
             driverLicense: '',
             weightTicket: 'WT-' + Math.floor(100000 + Math.random() * 900000),
-            deliveryNote: 'DN-' + Math.floor(10000 + Math.random() * 90000),
+            deliveryNote: '',   // A7: reset to empty for next entry
             millName: '',
             fscClaim: 'FSC Controlled Wood'
         });
@@ -1557,8 +1822,17 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
 
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                             <div class="form-group">
-                                <label>ใบนำส่งไม้ (Delivery Note)</label>
-                                <input type="text" class="form-control" value=${form.deliveryNote} disabled />
+                                <label>หมายเลข DO <span style="font-size:0.75rem; color:var(--text-muted);">(จากระบบภายใน)</span></label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    name="deliveryNote"
+                                    value=${form.deliveryNote}
+                                    onChange=${handleChange}
+                                    placeholder="เช่น DO-12345"
+                                    style="font-family:monospace;"
+                                    required
+                                />
                             </div>
                             <div class="form-group">
                                 <label>ใบชั่งน้ำหนัก (Weight Ticket)</label>
@@ -1635,7 +1909,7 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
                                                 <span class="badge ${s.fscClaim === 'FSC 100%' ? 'badge-success' : s.fscClaim === 'FSC Mix' ? 'badge-info' : 'badge-warning'}" style="margin-bottom:4px; display:inline-flex;">
                                                     ${s.fscClaim}
                                                 </span>
-                                                <div style="font-size:0.7rem; font-family:monospace; color:var(--text-muted);">DN: ${s.deliveryNote}</div>
+                                                <div style="font-size:0.7rem; font-family:monospace; color:var(--text-muted);">DO: ${s.deliveryNote || '-'}</div>
                                             </td>
                                             <td style="text-align:right;">
                                                 <button class="action-btn btn-delete" title="ลบรายการขนส่งนี้" onClick=${() => onDeleteShipment(s.id)}>
@@ -1742,7 +2016,7 @@ export function TimberDeliveryNote({ shipments, plantations }) {
                             <div style="font-size:0.9rem; font-weight:700;">${companyName || '___________________________'}</div>
                             <div style="font-size:0.75rem; color:#64748b;">${companyAddress || ''}</div>
                             <div style="margin-top:8px; padding:6px 14px; border:2px solid #0f172a; display:inline-block; font-weight:700; font-size:0.8rem;">
-                                เลขที่: ${s ? s.deliveryNote : 'DN-__________'}
+                                หมายเลข DO: ${s ? (s.deliveryNote || '___________') : '___________'}
                             </div>
                         </div>
                     </div>
@@ -1941,7 +2215,7 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
                 deforestationFreeStatus: p.deforestationFreeCheck ? "Verified Deforestation-free after 2020-12-31" : "Failed",
                 legalityStatus: p.eudrCompliant ? "Fully Compliant" : "Non-Compliant",
                 fscStatus: p.fscStatus,
-                fscCwVerdict: p.fscCWVerdict
+                fscCwVerdict: p.fscCwVerdict
             },
             geometry: geometry
         };
@@ -2074,11 +2348,11 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
                     </div>
 
                     <div class="report-status-block">
-                        <div class="report-status-title" style="color: ${p.fscCWVerdict === 'Low Risk' ? '#047857' : '#b91c1c'}">
+                        <div class="report-status-title" style="color: ${p.fscCwVerdict === 'Low Risk' ? '#047857' : '#b91c1c'}">
                             2. การตรวจสอบไม้ควบคุมตามเกณฑ์ FSC Controlled Wood (FSC-STD-40-005):
                         </div>
                         <ul style="margin-left: 20px; display:flex; flex-direction:column; gap:6px;">
-                            <li><b>ระดับความเสี่ยงของวัตถุดิบ (Sourcing Risk Verdict):</b> ${p.fscCWVerdict === 'Low Risk' ? '✅ ความเสี่ยงต่ำ (Low Risk) - ผ่านการประเมินความสอดคล้องตามเอกสารภาคผนวกสมาคม FSC ประเทศไทย' : '❌ ความเสี่ยงเฉพาะเจาะจง (Specified Risk) - จำเป็นต้องดำเนินมาตรการลดความเสี่ยงก่อนทำการผลิต'}</li>
+                            <li><b>ระดับความเสี่ยงของวัตถุดิบ (Sourcing Risk Verdict):</b> ${p.fscCwVerdict === 'Low Risk' ? '✅ ความเสี่ยงต่ำ (Low Risk) - ผ่านการประเมินความสอดคล้องตามเอกสารภาคผนวกสมาคม FSC ประเทศไทย' : '❌ ความเสี่ยงเฉพาะเจาะจง (Specified Risk) - จำเป็นต้องดำเนินมาตรการลดความเสี่ยงก่อนทำการผลิต'}</li>
                             <li><b>ผลการประเมิน 7 หมวดหมู่:</b>
                                 [1.ถูกกฎหมาย: ${p.fscSTD1?'✅':'❌'},
                                 2.สิทธิชุมชน: ${p.fscSTD2?'✅':'❌'},

@@ -14,7 +14,9 @@ import {
 const html = htm.bind(h);
 
 // App data version — bump this to clear localStorage on schema changes
-const APP_VERSION = '2.1';
+// v2.2: A2 Customer ID user-entered, B1 species Eucalyptus-only, B2 HCV 6-question risk assessment,
+//        B3 targetMill field, A7 deliveryNote→DO user-entered
+const APP_VERSION = '2.2';
 
 // Seed Data (new schema: id=FSC-xxxxxx, plotCode=3-digit string)
 const SEED_PLANTATIONS = [
@@ -26,6 +28,7 @@ const SEED_PLANTATIONS = [
         subdistrict: 'ลานสัก',
         district: 'ลานสัก',
         province: 'อุทัยธานี',
+        targetMill: 'โรงงาน Double A (มหาชน) สาขาท่าตูม',
         areaRai: 18,
         areaHectares: 2.88,
         landDocType: 'Chanote',
@@ -39,20 +42,19 @@ const SEED_PLANTATIONS = [
         estVolume: 75,
         geoType: 'point',
         coords: { lat: 15.421102, lng: 99.412345 },
+        hcvQ1: false, hcvQ2: true, hcvQ3: false, hcvQ4: false, hcvQ5: false, hcvQ6: false,
+        hcvQ3Note: '', hcvQ4Note: '', hcvQ5Note: '', hcvQ6Note: '',
+        hcvNonCompliant: false, hcvSpecifiedRisk: false,
         deforestationFreeCheck: true,
         forestProtectionZoneCheck: true,
-        fscSTD1: true,
-        fscSTD2: true,
-        fscSTD3: true,
-        fscSTD4: true,
-        fscSTD5: true,
-        fscSTD6: true,
-        fscSTD7: true,
+        fscSTD1: true, fscSTD2: true, fscSTD3: true, fscSTD4: true,
+        fscSTD5: true, fscSTD6: true, fscSTD7: true,
         docAttachmentDeed: true,
         docAttachmentOwnerID: true,
         docAttachmentSaleContract: false,
+        yieldEvidenceNote: '',
         treeAge: 59,
-        fscCWVerdict: 'Low Risk',
+        fscCwVerdict: 'Low Risk',
         eudrCompliant: true,
         eudrWarning: '',
         fscStatus: 'FSC 100%'
@@ -65,6 +67,7 @@ const SEED_PLANTATIONS = [
         subdistrict: 'เกาะขนุน',
         district: 'พนมสารคาม',
         province: 'ฉะเชิงเทรา',
+        targetMill: 'บริษัท สยามเซลลูโลส จำกัด สาขาบ้านค่าย',
         areaRai: 35,
         areaHectares: 5.60,
         landDocType: 'NorSor3',
@@ -83,20 +86,19 @@ const SEED_PLANTATIONS = [
             { lat: 13.690102, lng: 101.356123 },
             { lat: 13.687102, lng: 101.352123 }
         ],
+        hcvQ1: false, hcvQ2: true, hcvQ3: false, hcvQ4: false, hcvQ5: false, hcvQ6: false,
+        hcvQ3Note: '', hcvQ4Note: '', hcvQ5Note: '', hcvQ6Note: '',
+        hcvNonCompliant: false, hcvSpecifiedRisk: false,
         deforestationFreeCheck: true,
         forestProtectionZoneCheck: true,
-        fscSTD1: true,
-        fscSTD2: true,
-        fscSTD3: true,
-        fscSTD4: true,
-        fscSTD5: true,
-        fscSTD6: true,
-        fscSTD7: true,
+        fscSTD1: true, fscSTD2: true, fscSTD3: true, fscSTD4: true,
+        fscSTD5: true, fscSTD6: true, fscSTD7: true,
         docAttachmentDeed: true,
         docAttachmentOwnerID: true,
         docAttachmentSaleContract: true,
+        yieldEvidenceNote: '',
         treeAge: 48,
-        fscCWVerdict: 'Low Risk',
+        fscCwVerdict: 'Low Risk',
         eudrCompliant: true,
         eudrWarning: '',
         fscStatus: 'FSC Controlled Wood'
@@ -109,6 +111,7 @@ const SEED_PLANTATIONS = [
         subdistrict: 'ลาดกระทิง',
         district: 'สนามชัยเขต',
         province: 'ฉะเชิงเทรา',
+        targetMill: '',
         areaRai: 50,
         areaHectares: 8.00,
         landDocType: 'Others',
@@ -126,22 +129,21 @@ const SEED_PLANTATIONS = [
             { lat: 13.615102, lng: 101.445123 },
             { lat: 13.610102, lng: 101.447123 }
         ],
+        hcvQ1: true,  hcvQ2: true, hcvQ3: false, hcvQ4: false, hcvQ5: false, hcvQ6: false,
+        hcvQ3Note: '', hcvQ4Note: '', hcvQ5Note: '', hcvQ6Note: '',
+        hcvNonCompliant: true, hcvSpecifiedRisk: false,
         deforestationFreeCheck: false,
         forestProtectionZoneCheck: false,
-        fscSTD1: true,
-        fscSTD2: true,
-        fscSTD3: false,
-        fscSTD4: true,
-        fscSTD5: true,
-        fscSTD6: true,
-        fscSTD7: true,
+        fscSTD1: true, fscSTD2: true, fscSTD3: false, fscSTD4: true,
+        fscSTD5: true, fscSTD6: true, fscSTD7: true,
         docAttachmentDeed: false,
         docAttachmentOwnerID: true,
         docAttachmentSaleContract: false,
+        yieldEvidenceNote: '',
         treeAge: 40,
-        fscCWVerdict: 'Specified Risk',
+        fscCwVerdict: 'Specified Risk',
         eudrCompliant: false,
-        eudrWarning: 'พบข้อมูลการถางป่าธรรมชาติหลังเส้นตายวันที่ 31 ธ.ค. 2020 และทับซ้อนเขตป่าไม้ถาวรตามกฎหมาย',
+        eudrWarning: 'แปลงอยู่ในเขตป่าสงวนหรือพื้นที่คุ้มครองตามกฎหมาย (ข้อ 3.1)',
         fscStatus: 'FSC Controlled Wood'
     }
 ];
@@ -157,7 +159,7 @@ const SEED_SHIPMENTS = [
         driverName: 'นายประสิทธิ์ เรืองแรง',
         driverLicense: 'DL-88921',
         weightTicket: 'WT-778219',
-        deliveryNote: 'DN-55102',
+        deliveryNote: 'DO-55102',
         millName: 'โรงงาน Double A (มหาชน) สาขาท่าตูม',
         fscClaim: 'FSC 100%'
     },
@@ -171,7 +173,7 @@ const SEED_SHIPMENTS = [
         driverName: 'นายมานะ รักดี',
         driverLicense: 'DL-66710',
         weightTicket: 'WT-990123',
-        deliveryNote: 'DN-77219',
+        deliveryNote: 'DO-77219',
         millName: 'บริษัท สยามเซลลูโลส จำกัด สาขาบ้านค่าย',
         fscClaim: 'FSC Controlled Wood'
     }
