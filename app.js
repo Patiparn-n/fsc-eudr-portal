@@ -7,6 +7,7 @@ import {
     Dashboard,
     PlantationForm,
     PlantationList,
+    PlantationView,
     CocLedger,
     DdsReport,
     TimberDeliveryNote,
@@ -221,6 +222,7 @@ function App() {
     const [shipments, setShipments] = useState([]);
     const [vesselShipments, setVesselShipments] = useState([]); // C2
     const [editPlantationId, setEditPlantationId] = useState(null);
+    const [viewPlantationId, setViewPlantationId] = useState(null);
     const [selectedPlantationId, setSelectedPlantationId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -350,7 +352,7 @@ function App() {
         setPlantations(updated);
         setEditPlantationId(null);
         setTab('plantations');
-        logAction(currentUser, editPlantationId ? 'UPDATE_PLANTATION' : 'CREATE_PLANTATION', 'Plantations', data.id, '');
+        logAction(currentUser, editPlantationId ? 'UPDATE_PLANTATION' : 'CREATE_PLANTATION', 'Plantations', data.id, data.editReason || '');
     };
 
     // Delete Plantation (cascades to shipments)
@@ -370,6 +372,12 @@ function App() {
     const triggerEdit = (id) => {
         setEditPlantationId(id);
         setTab('plantations-edit');
+    };
+
+    // View Plantation Navigation (read-only — used by FSC Staff)
+    const triggerView = (id) => {
+        setViewPlantationId(id);
+        setTab('plantations-view');
     };
 
     // Add Shipment Handler
@@ -803,6 +811,7 @@ function App() {
                         plantations=${plantations}
                         onDelete=${deletePlantation}
                         onEdit=${triggerEdit}
+                        onView=${triggerView}
                         setTab=${setTab}
                         setSelectedPlantationId=${setSelectedPlantationId}
                         currentUser=${currentUser}
@@ -817,6 +826,17 @@ function App() {
                         onSave=${savePlantation}
                         onCancel=${() => { setEditPlantationId(null); setTab('plantations'); }}
                         editPlantationId=${editPlantationId}
+                        currentUser=${currentUser}
+                    />
+                `}
+
+                ${tab === 'plantations-view' && html`
+                    <${PlantationView}
+                        plantations=${plantations}
+                        viewPlantationId=${viewPlantationId}
+                        onBack=${() => { setViewPlantationId(null); setTab('plantations'); }}
+                        onApprove=${handleApprove}
+                        onReject=${handleReject}
                         currentUser=${currentUser}
                     />
                 `}
