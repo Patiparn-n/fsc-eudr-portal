@@ -2817,9 +2817,24 @@ export function LoginForm({ onLogin, loading, error, demoMode }) {
         <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg-dark);padding:24px;">
 
             ${demoMode && html`
-                <div style="max-width:420px;width:100%;margin-bottom:14px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.35);border-radius:10px;padding:10px 16px;font-size:0.82rem;color:#fbbf24;text-align:center;line-height:1.5;">
-                    ⚙️ <b>Demo Mode</b> — ยังไม่ได้เชื่อมต่อ Google Sheets<br/>
-                    Username: <b style="color:#fff;">admin</b> &nbsp;/&nbsp; Password: <b style="color:#fff;">Admin@1234</b>
+                <div style="max-width:480px;width:100%;margin-bottom:14px;background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.35);border-radius:12px;padding:14px 16px;font-size:0.82rem;color:#fbbf24;">
+                    <div style="text-align:center;margin-bottom:10px;">⚙️ <b>Demo Mode</b> — ยังไม่ได้เชื่อมต่อ Google Sheets</div>
+                    <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                        <thead>
+                            <tr style="color:rgba(251,191,36,0.7);border-bottom:1px solid rgba(234,179,8,0.25);">
+                                <th style="text-align:left;padding:3px 8px;font-weight:600;">Username</th>
+                                <th style="text-align:left;padding:3px 8px;font-weight:600;">Password</th>
+                                <th style="text-align:left;padding:3px 8px;font-weight:600;">Role</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td style="padding:4px 8px;color:#fff;font-weight:700;">admin</td><td style="padding:4px 8px;color:#d1d5db;">Admin@1234</td><td style="padding:4px 8px;"><span style="color:#ef4444;font-weight:600;">ผู้ดูแลระบบ</span></td></tr>
+                            <tr><td style="padding:4px 8px;color:#fff;font-weight:700;">manager</td><td style="padding:4px 8px;color:#d1d5db;">Manager@1234</td><td style="padding:4px 8px;"><span style="color:#a855f7;font-weight:600;">ผู้จัดการ</span></td></tr>
+                            <tr><td style="padding:4px 8px;color:#fff;font-weight:700;">fsc_staff</td><td style="padding:4px 8px;color:#d1d5db;">FscStaff@1234</td><td style="padding:4px 8px;"><span style="color:#3b82f6;font-weight:600;">FSC Staff</span></td></tr>
+                            <tr><td style="padding:4px 8px;color:#fff;font-weight:700;">proc_mgr</td><td style="padding:4px 8px;color:#d1d5db;">ProcMgr@1234</td><td style="padding:4px 8px;"><span style="color:#10b981;font-weight:600;">จัดซื้อ (อาวุโส)</span></td></tr>
+                            <tr><td style="padding:4px 8px;color:#fff;font-weight:700;">procurement</td><td style="padding:4px 8px;color:#d1d5db;">Proc@1234</td><td style="padding:4px 8px;"><span style="color:#94a3b8;font-weight:600;">จัดซื้อ</span></td></tr>
+                        </tbody>
+                    </table>
                 </div>
             `}
 
