@@ -3190,6 +3190,7 @@ const ACTION_GROUPS = {
 export function AuditLog({ logs, loading }) {
     const [search, setSearch] = useState('');
     const [groupFilter, setGroupFilter] = useState('');
+    const [datePreset, setDatePreset] = useState('');   // '' = ไม่ระบุวัน (ทั้งหมด)
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [displayLimit, setDisplayLimit] = useState(100);
@@ -3200,10 +3201,34 @@ export function AuditLog({ logs, loading }) {
         } catch { return iso; }
     };
 
+    // Compute effective from/to from preset (or custom dateFrom/dateTo when preset==='custom')
+    const toDateStr = (d) => d.toISOString().slice(0, 10);
+    const getEffectiveDates = () => {
+        if (datePreset === '') return { from: '', to: '' };                // ไม่ระบุ → ทั้งหมด
+        if (datePreset === 'custom') return { from: dateFrom, to: dateTo };
+        const now = new Date();
+        const today = toDateStr(now);
+        if (datePreset === 'today') return { from: today, to: today };
+        if (datePreset === '7days') {
+            const d = new Date(now); d.setDate(d.getDate() - 6);
+            return { from: toDateStr(d), to: today };
+        }
+        if (datePreset === '30days') {
+            const d = new Date(now); d.setDate(d.getDate() - 29);
+            return { from: toDateStr(d), to: today };
+        }
+        if (datePreset === 'thismonth') {
+            return { from: `${today.slice(0,7)}-01`, to: today };
+        }
+        return { from: '', to: '' };
+    };
+
+    const { from: effFrom, to: effTo } = getEffectiveDates();
+
     const filtered = logs.filter(log => {
         if (groupFilter && !(ACTION_GROUPS[groupFilter] || []).includes(log.action)) return false;
-        if (dateFrom && log.timestamp < dateFrom) return false;
-        if (dateTo && log.timestamp > dateTo + 'T23:59:59') return false;
+        if (effFrom && log.timestamp < effFrom) return false;
+        if (effTo && log.timestamp > effTo + 'T23:59:59') return false;
         if (search) {
             const s = search.toLowerCase();
             return (log.username || '').toLowerCase().includes(s) ||
@@ -3223,7 +3248,12 @@ export function AuditLog({ logs, loading }) {
         );
     };
 
-    const clearFilters = () => { setSearch(''); setGroupFilter(''); setDateFrom(''); setDateTo(''); };
+    const clearFilters = () => {
+        setSearch(''); setGroupFilter('');
+        setDatePreset(''); setDateFrom(''); setDateTo('');
+    };
+
+    const hasFilter = search || groupFilter || datePreset;
 
     return html`
         <div>
@@ -3252,17 +3282,36 @@ export function AuditLog({ logs, loading }) {
                         <option value="user">👤 ผู้ใช้งาน</option>
                         <option value="data">📥 นำเข้าข้อมูล</option>
                     </select>
-                    <input type="date" class="form-control" value=${dateFrom}
-                        onChange=${e => setDateFrom(e.target.value)} style="width:auto;" title="ตั้งแต่วันที่" />
-                    <span style="color:var(--text-muted);font-size:0.85rem;">ถึง</span>
-                    <input type="date" class="form-control" value=${dateTo}
-                        onChange=${e => setDateTo(e.target.value)} style="width:auto;" title="ถึงวันที่" />
-                    ${(search || groupFilter || dateFrom || dateTo) && html`
+                    <!-- Date preset selector -->
+                    <select class="form-control" value=${datePreset}
+                        onChange=${e => { setDatePreset(e.target.value); setDateFrom(''); setDateTo(''); }}
+                        style="width:auto;min-width:175px;">
+                        <option value="">📅 ไม่ระบุวัน (ทั้งหมด)</option>
+                        <option value="today">วันนี้</option>
+                        <option value="7days">7 วันล่าสุด</option>
+                        <option value="30days">30 วันล่าสุด</option>
+                        <option value="thismonth">เดือนนี้</option>
+                        <option value="custom">📆 กำหนดเอง...</option>
+                    </select>
+                    <!-- Custom date range — shown only when preset = 'custom' -->
+                    ${datePreset === 'custom' && html`
+                        <input type="date" class="form-control" value=${dateFrom}
+                            onChange=${e => setDateFrom(e.target.value)} style="width:auto;" title="ตั้งแต่วันที่" />
+                        <span style="color:var(--text-muted);font-size:0.85rem;">ถึง</span>
+                        <input type="date" class="form-control" value=${dateTo}
+                            onChange=${e => setDateTo(e.target.value)} style="width:auto;" title="ถึงวันที่" />
+                    `}
+                    ${hasFilter && html`
                         <button class="btn btn-secondary" style="padding:6px 12px;" onClick=${clearFilters}>
                             <${Icon} name="x" size="13" /> ล้างตัวกรอง
                         </button>
                     `}
                 </div>
+                ${datePreset && datePreset !== 'custom' && html`
+                    <div style="margin-top:6px;font-size:0.75rem;color:var(--text-muted);">
+                        📅 กรองช่วงวันที่: <b>${effFrom}</b> ถึง <b>${effTo}</b>
+                    </div>
+                `}
                 <div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);">
                     แสดง <b>${Math.min(filtered.length, displayLimit)}</b> จาก <b>${filtered.length}</b> รายการ (ทั้งหมดในระบบ <b>${logs.length}</b> รายการ)
                 </div>
