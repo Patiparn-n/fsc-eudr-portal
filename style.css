@@ -1192,3 +1192,9 @@ input:checked + .slider:before {
     .no-break            { page-break-inside: avoid !important; }
     tr                   { page-break-inside: avoid; }
 }
+
+/* ── Phase 1: Animations ─────────────────────────────────────────────────── */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}

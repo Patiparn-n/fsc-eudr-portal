@@ -2796,3 +2796,118 @@ export function MonthlyReport({ plantations, shipments, vesselShipments }) {
         </div>
     `;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1: LoginForm
+// Full-screen login page matching the app's dark theme.
+// Props: onLogin(username, password), loading, error, demoMode
+// ─────────────────────────────────────────────────────────────────────────────
+export function LoginForm({ onLogin, loading, error, demoMode }) {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPw, setShowPw] = useState(false);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        const u = username.trim();
+        if (u && password) onLogin(u, password);
+    };
+
+    return html`
+        <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg-dark);padding:24px;">
+
+            ${demoMode && html`
+                <div style="max-width:420px;width:100%;margin-bottom:14px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.35);border-radius:10px;padding:10px 16px;font-size:0.82rem;color:#fbbf24;text-align:center;line-height:1.5;">
+                    ⚙️ <b>Demo Mode</b> — ยังไม่ได้เชื่อมต่อ Google Sheets<br/>
+                    Username: <b style="color:#fff;">admin</b> &nbsp;/&nbsp; Password: <b style="color:#fff;">Admin@1234</b>
+                </div>
+            `}
+
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:40px 36px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.45);">
+
+                <!-- Logo & Title -->
+                <div style="text-align:center;margin-bottom:32px;">
+                    <div style="font-size:3.2rem;margin-bottom:8px;">🌳</div>
+                    <h1 style="font-size:1.55rem;font-weight:800;color:var(--text-main);margin:0 0 5px;">FSC & EUDR</h1>
+                    <p style="color:var(--text-muted);font-size:0.88rem;margin:0;">Compliance Portal — เข้าสู่ระบบ</p>
+                </div>
+
+                <form onSubmit=${handleSubmit}>
+
+                    <!-- Username -->
+                    <div style="margin-bottom:18px;">
+                        <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;">ชื่อผู้ใช้ (Username)</label>
+                        <input
+                            type="text"
+                            class="form-input"
+                            placeholder="กรอกชื่อผู้ใช้"
+                            value=${username}
+                            onInput=${e => setUsername(e.target.value)}
+                            autocomplete="username"
+                            disabled=${loading}
+                            required
+                            style="width:100%;box-sizing:border-box;"
+                        />
+                    </div>
+
+                    <!-- Password -->
+                    <div style="margin-bottom:24px;">
+                        <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;">รหัสผ่าน (Password)</label>
+                        <div style="position:relative;">
+                            <input
+                                type=${showPw ? 'text' : 'password'}
+                                class="form-input"
+                                placeholder="กรอกรหัสผ่าน"
+                                value=${password}
+                                onInput=${e => setPassword(e.target.value)}
+                                autocomplete="current-password"
+                                disabled=${loading}
+                                required
+                                style="width:100%;box-sizing:border-box;padding-right:46px;"
+                            />
+                            <button
+                                type="button"
+                                onClick=${() => setShowPw(!showPw)}
+                                style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;display:flex;align-items:center;line-height:1;"
+                                title=${showPw ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                            >
+                                <${Icon} name=${showPw ? 'eye-off' : 'eye'} size="17" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Error Message -->
+                    ${error && html`
+                        <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px 14px;margin-bottom:18px;font-size:0.87rem;color:#ef4444;display:flex;align-items:center;gap:9px;">
+                            <${Icon} name="alert-circle" size="16" />
+                            ${error}
+                        </div>
+                    `}
+
+                    <!-- Submit Button -->
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                        style="width:100%;justify-content:center;padding:13px;font-size:1rem;font-weight:700;"
+                        disabled=${loading || !username.trim() || !password}
+                    >
+                        ${loading ? html`
+                            <span style="display:inline-flex;align-items:center;gap:9px;">
+                                <span style="width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.75s linear infinite;display:inline-block;flex-shrink:0;"></span>
+                                กำลังเข้าสู่ระบบ...
+                            </span>
+                        ` : html`
+                            <${Icon} name="log-in" size="18" /> เข้าสู่ระบบ
+                        `}
+                    </button>
+
+                </form>
+
+                <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);text-align:center;font-size:0.75rem;color:var(--text-muted);line-height:1.6;">
+                    FSC-STD-40-005 V3-1 · EUDR Regulation (EU) 2023/1115<br/>
+                    <span style="color:var(--primary);font-weight:600;">● EUDR COMPLIANCE ACTIVE</span>
+                </div>
+            </div>
+        </div>
+    `;
+}

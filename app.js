@@ -3,6 +3,7 @@ import { useState, useEffect } from 'https://esm.sh/preact/hooks';
 import htm from 'https://esm.sh/htm';
 import {
     Icon,
+    LoginForm,
     Dashboard,
     PlantationForm,
     PlantationList,
@@ -12,6 +13,8 @@ import {
     VesselShipment,
     MonthlyReport
 } from './components.js';
+import { authLogin, authLogout, authValidateToken } from './api.js';
+import { DEMO_MODE } from './config.js';
 
 const html = htm.bind(h);
 
@@ -205,6 +208,12 @@ function App() {
     const [selectedPlantationId, setSelectedPlantationId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
+    // ─── Auth State (Phase 1) ──────────────────────────────────────────────────
+    const [currentUser, setCurrentUser] = useState(null);
+    const [authLoading, setAuthLoading] = useState(true);
+    const [loginLoading, setLoginLoading] = useState(false);
+    const [authError, setAuthError] = useState('');
+
     // Initial Load & Seeding (with version-based migration)
     useEffect(() => {
         const storedVersion = localStorage.getItem('fsc_eudr_version');
@@ -247,6 +256,49 @@ function App() {
             window.lucide.createIcons();
         }
     }, [tab, sidebarOpen, vesselShipments, plantations]);
+
+    // ─── Session Validation on Mount (Phase 1) ────────────────────────────────
+    useEffect(() => {
+        let cancelled = false;
+        async function checkSession() {
+            try {
+                const sessionStr = localStorage.getItem('fsc_eudr_session');
+                if (!sessionStr) { if (!cancelled) setAuthLoading(false); return; }
+                const session = JSON.parse(sessionStr);
+                // Fast local expiry check before hitting the API
+                if (new Date() >= new Date(session.expiresAt)) {
+                    localStorage.removeItem('fsc_eudr_session');
+                    if (!cancelled) setAuthLoading(false);
+                    return;
+                }
+                // Validate token with API (handles demo mode automatically)
+                const result = await authValidateToken(session.token);
+                if (cancelled) return;
+                if (result.valid) {
+                    setCurrentUser(result.user);
+                } else {
+                    localStorage.removeItem('fsc_eudr_session');
+                }
+            } catch {
+                // Network error → trust cached session if not yet expired
+                const sessionStr = localStorage.getItem('fsc_eudr_session');
+                if (sessionStr && !cancelled) {
+                    try {
+                        const session = JSON.parse(sessionStr);
+                        if (new Date() < new Date(session.expiresAt)) {
+                            setCurrentUser(session.user);
+                        } else {
+                            localStorage.removeItem('fsc_eudr_session');
+                        }
+                    } catch {}
+                }
+            } finally {
+                if (!cancelled) setAuthLoading(false);
+            }
+        }
+        checkSession();
+        return () => { cancelled = true; };
+    }, []);
 
     // Save Plantation
     const savePlantation = (data) => {
@@ -402,6 +454,78 @@ function App() {
         e.target.value = '';
     };
 
+    // ─── Login Handler (Phase 1) ───────────────────────────────────────────────
+    const handleLogin = async (username, password) => {
+        setLoginLoading(true);
+        setAuthError('');
+        try {
+            const result = await authLogin(username, password);
+            if (result.success) {
+                const session = { token: result.token, user: result.user, expiresAt: result.expiresAt };
+                localStorage.setItem('fsc_eudr_session', JSON.stringify(session));
+                setCurrentUser(result.user);
+            } else {
+                setAuthError(result.message || 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+            }
+        } catch {
+            setAuthError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเตอร์เน็ต');
+        } finally {
+            setLoginLoading(false);
+        }
+    };
+
+    // ─── Logout Handler (Phase 1) ──────────────────────────────────────────────
+    const handleLogout = async () => {
+        if (!confirm('ยืนยันการออกจากระบบ?')) return;
+        const sessionStr = localStorage.getItem('fsc_eudr_session');
+        if (sessionStr) {
+            try {
+                const session = JSON.parse(sessionStr);
+                await authLogout(session.token);
+            } catch {}
+        }
+        localStorage.removeItem('fsc_eudr_session');
+        setCurrentUser(null);
+        setTab('dashboard');
+    };
+
+    // ─── Role & Display Labels ─────────────────────────────────────────────────
+    // (computed after auth guards — currentUser guaranteed non-null here)
+    const ROLE_LABELS = {
+        admin:           { label: 'ผู้ดูแลระบบ',      color: '#ef4444', bg: 'rgba(239,68,68,0.08)',    border: 'rgba(239,68,68,0.3)'    },
+        manager:         { label: 'ผู้จัดการ',          color: '#a855f7', bg: 'rgba(168,85,247,0.08)',   border: 'rgba(168,85,247,0.3)'   },
+        fsc_staff:       { label: 'FSC Staff',           color: '#3b82f6', bg: 'rgba(59,130,246,0.08)',   border: 'rgba(59,130,246,0.3)'   },
+        procurement_mgr: { label: 'จัดซื้อ (อาวุโส)',  color: '#10b981', bg: 'rgba(16,185,129,0.08)',   border: 'rgba(16,185,129,0.3)'   },
+        procurement:     { label: 'จัดซื้อ',            color: '#94a3b8', bg: 'rgba(148,163,184,0.08)',  border: 'rgba(148,163,184,0.3)'  },
+    };
+    const FALLBACK_ROLE = { label: 'ผู้ใช้งาน', color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.3)' };
+
+    // ─── Auth Guards ───────────────────────────────────────────────────────────
+    if (authLoading) {
+        return html`
+            <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg-dark);">
+                <div style="text-align:center;">
+                    <div style="font-size:3.5rem;margin-bottom:18px;">🌳</div>
+                    <div style="font-size:0.9rem;color:var(--text-muted);letter-spacing:0.02em;">กำลังตรวจสอบสิทธิ์การเข้าใช้งาน...</div>
+                </div>
+            </div>
+        `;
+    }
+    if (!currentUser) {
+        return html`
+            <${LoginForm}
+                onLogin=${handleLogin}
+                loading=${loginLoading}
+                error=${authError}
+                demoMode=${DEMO_MODE}
+            />
+        `;
+    }
+
+    // ── currentUser is guaranteed non-null from here ──
+    const roleLevel = currentUser.roleLevel || 1;
+    const roleInfo = ROLE_LABELS[currentUser.role] || FALLBACK_ROLE;
+
     const closeNav = () => setSidebarOpen(false);
 
     return html`
@@ -461,14 +585,36 @@ function App() {
                             <${Icon} name="ship" /> ส่งออกทางเรือ (Vessel DDS)
                         </a>
                     </li>
+                    ${roleLevel >= 3 && html`
                     <li>
                         <a class="nav-item ${tab === 'monthly-report' ? 'active' : ''}" onClick=${() => { setTab('monthly-report'); closeNav(); }}>
                             <${Icon} name="bar-chart-2" /> รายงานรายเดือน
                         </a>
                     </li>
+                    `}
                 </ul>
 
                 <div class="sidebar-footer">
+                    <!-- Phase 1: User info card + logout -->
+                    <div style="background:${roleInfo.bg};border:1px solid ${roleInfo.border};border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="width:33px;height:33px;border-radius:50%;background:${roleInfo.bg};border:1px solid ${roleInfo.border};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <${Icon} name="user" size="15" />
+                            </div>
+                            <div style="min-width:0;flex:1;overflow:hidden;">
+                                <div style="font-size:0.82rem;font-weight:700;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${currentUser.fullName}">${currentUser.fullName}</div>
+                                <div style="font-size:0.7rem;font-weight:600;color:${roleInfo.color};margin-top:1px;">${roleInfo.label}</div>
+                            </div>
+                        </div>
+                        <button
+                            class="btn"
+                            style="width:100%;margin-top:9px;padding:6px 8px;font-size:0.75rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.28);color:#ef4444;justify-content:center;gap:6px;border-radius:7px;"
+                            onClick=${handleLogout}
+                        >
+                            <${Icon} name="log-out" size="13" /> ออกจากระบบ
+                        </button>
+                    </div>
+
                     <div>มาตรฐาน: <b>FSC-STD-40-005 V3-1</b></div>
                     <div style="font-size:0.7rem; color:var(--primary); margin-top:4px;">● EUDR COMPLIANCE ACTIVE</div>
 
@@ -558,7 +704,7 @@ function App() {
                     />
                 `}
 
-                ${tab === 'monthly-report' && html`
+                ${tab === 'monthly-report' && roleLevel >= 3 && html`
                     <${MonthlyReport}
                         plantations=${plantations}
                         shipments=${shipments}
