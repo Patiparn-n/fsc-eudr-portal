@@ -3159,6 +3159,179 @@ export function UserManagement({ currentUser, users, usersLoading, onCreateUser,
     `;
 }
 
+// =============================================================
+// Component: AuditLog (Phase 4 — Admin only, level 5)
+// =============================================================
+const ACTION_META = {
+    'LOGIN':              { label: 'เข้าสู่ระบบ',        emoji: '🔑', color: '#3b82f6' },
+    'LOGOUT':             { label: 'ออกจากระบบ',          emoji: '🚪', color: '#64748b' },
+    'CREATE_PLANTATION':  { label: 'เพิ่มแปลงปลูก',       emoji: '🌱', color: '#10b981' },
+    'UPDATE_PLANTATION':  { label: 'แก้ไขแปลงปลูก',      emoji: '✏️', color: '#f59e0b' },
+    'DELETE_PLANTATION':  { label: 'ลบแปลงปลูก',          emoji: '🗑️', color: '#ef4444' },
+    'APPROVE_PLANTATION': { label: 'อนุมัติแปลง',         emoji: '✅', color: '#10b981' },
+    'REJECT_PLANTATION':  { label: 'ปฏิเสธแปลง',          emoji: '❌', color: '#ef4444' },
+    'ADD_SHIPMENT':       { label: 'บันทึกส่งไม้ (CoC)', emoji: '🚛', color: '#8b5cf6' },
+    'DELETE_SHIPMENT':    { label: 'ลบรายการส่งไม้',      emoji: '🗑️', color: '#ef4444' },
+    'ADD_VESSEL':         { label: 'สร้าง Vessel DDS',    emoji: '🚢', color: '#0891b2' },
+    'DELETE_VESSEL':      { label: 'ลบ Vessel DDS',       emoji: '🗑️', color: '#ef4444' },
+    'CREATE_USER':        { label: 'สร้างผู้ใช้ใหม่',    emoji: '👤', color: '#10b981' },
+    'UPDATE_USER':        { label: 'แก้ไขผู้ใช้',         emoji: '✏️', color: '#f59e0b' },
+    'IMPORT_DATA':        { label: 'นำเข้าข้อมูล',        emoji: '📥', color: '#a855f7' },
+};
+const ACTION_GROUPS = {
+    'auth':       ['LOGIN', 'LOGOUT'],
+    'plantation': ['CREATE_PLANTATION', 'UPDATE_PLANTATION', 'DELETE_PLANTATION', 'APPROVE_PLANTATION', 'REJECT_PLANTATION'],
+    'shipment':   ['ADD_SHIPMENT', 'DELETE_SHIPMENT'],
+    'vessel':     ['ADD_VESSEL', 'DELETE_VESSEL'],
+    'user':       ['CREATE_USER', 'UPDATE_USER'],
+    'data':       ['IMPORT_DATA'],
+};
+
+export function AuditLog({ logs, loading }) {
+    const [search, setSearch] = useState('');
+    const [groupFilter, setGroupFilter] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+    const [displayLimit, setDisplayLimit] = useState(100);
+
+    const fmt = (iso) => {
+        try {
+            return new Date(iso).toLocaleString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        } catch { return iso; }
+    };
+
+    const filtered = logs.filter(log => {
+        if (groupFilter && !(ACTION_GROUPS[groupFilter] || []).includes(log.action)) return false;
+        if (dateFrom && log.timestamp < dateFrom) return false;
+        if (dateTo && log.timestamp > dateTo + 'T23:59:59') return false;
+        if (search) {
+            const s = search.toLowerCase();
+            return (log.username || '').toLowerCase().includes(s) ||
+                   (log.fullName || '').toLowerCase().includes(s) ||
+                   (log.action || '').toLowerCase().includes(s) ||
+                   (log.recordId || '').toLowerCase().includes(s) ||
+                   (log.details || '').toLowerCase().includes(s);
+        }
+        return true;
+    });
+
+    const handleExportCsv = () => {
+        exportToCsv(
+            `AuditLog-${new Date().toISOString().slice(0,10)}.csv`,
+            ['วันที่-เวลา', 'Username', 'ชื่อ', 'การกระทำ', 'โมดูล', 'รายการ', 'รายละเอียด'],
+            filtered.map(l => [fmt(l.timestamp), l.username, l.fullName, l.action, l.table, l.recordId, l.details])
+        );
+    };
+
+    const clearFilters = () => { setSearch(''); setGroupFilter(''); setDateFrom(''); setDateTo(''); };
+
+    return html`
+        <div>
+            <div class="header-actions">
+                <div class="page-title">
+                    <h1>บันทึกการใช้งาน (Audit Log)</h1>
+                    <p>ประวัติการกระทำทั้งหมดในระบบ — เก็บข้อมูลสูงสุด 1,000 รายการล่าสุด</p>
+                </div>
+                <button class="btn btn-outline" onClick=${handleExportCsv} disabled=${filtered.length === 0}>
+                    <${Icon} name="download" /> Export CSV
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div class="card" style="padding:14px 16px;margin-bottom:16px;">
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                    <input class="search-input" type="text" placeholder="ค้นหา username / รายการ / รายละเอียด..."
+                        value=${search} onInput=${e => setSearch(e.target.value)}
+                        style="flex:1;min-width:200px;" />
+                    <select class="form-control" value=${groupFilter} onChange=${e => setGroupFilter(e.target.value)} style="width:auto;min-width:180px;">
+                        <option value="">ทุกประเภทการกระทำ</option>
+                        <option value="auth">🔑 เข้า/ออกระบบ</option>
+                        <option value="plantation">🌱 แปลงปลูก</option>
+                        <option value="shipment">🚛 ส่งไม้ (CoC)</option>
+                        <option value="vessel">🚢 Vessel DDS</option>
+                        <option value="user">👤 ผู้ใช้งาน</option>
+                        <option value="data">📥 นำเข้าข้อมูล</option>
+                    </select>
+                    <input type="date" class="form-control" value=${dateFrom}
+                        onChange=${e => setDateFrom(e.target.value)} style="width:auto;" title="ตั้งแต่วันที่" />
+                    <span style="color:var(--text-muted);font-size:0.85rem;">ถึง</span>
+                    <input type="date" class="form-control" value=${dateTo}
+                        onChange=${e => setDateTo(e.target.value)} style="width:auto;" title="ถึงวันที่" />
+                    ${(search || groupFilter || dateFrom || dateTo) && html`
+                        <button class="btn btn-secondary" style="padding:6px 12px;" onClick=${clearFilters}>
+                            <${Icon} name="x" size="13" /> ล้างตัวกรอง
+                        </button>
+                    `}
+                </div>
+                <div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);">
+                    แสดง <b>${Math.min(filtered.length, displayLimit)}</b> จาก <b>${filtered.length}</b> รายการ (ทั้งหมดในระบบ <b>${logs.length}</b> รายการ)
+                </div>
+            </div>
+
+            <div class="card">
+                ${loading ? html`
+                    <div style="padding:40px;text-align:center;color:var(--text-muted);">
+                        <${Icon} name="loader" style="animation:spin 1s linear infinite;display:block;margin:0 auto 10px;" size="24" />
+                        กำลังโหลดบันทึก...
+                    </div>
+                ` : html`
+                    <div class="table-wrapper">
+                        <table class="data-table" style="font-size:0.82rem;">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:145px;white-space:nowrap;">วันที่-เวลา</th>
+                                    <th>ผู้ใช้งาน</th>
+                                    <th>การกระทำ</th>
+                                    <th>โมดูล</th>
+                                    <th>รายการ</th>
+                                    <th>รายละเอียด</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${filtered.slice(0, displayLimit).map((log, i) => {
+                                    const meta = ACTION_META[log.action] || { label: log.action, emoji: '•', color: '#94a3b8' };
+                                    return html`
+                                        <tr key=${log.timestamp + i}>
+                                            <td style="font-family:monospace;font-size:0.75rem;white-space:nowrap;color:var(--text-muted);">
+                                                ${fmt(log.timestamp)}
+                                            </td>
+                                            <td>
+                                                <div style="font-weight:600;font-size:0.82rem;">${log.username}</div>
+                                                <div style="font-size:0.72rem;color:var(--text-muted);">${log.fullName}</div>
+                                            </td>
+                                            <td style="white-space:nowrap;">
+                                                <span style="font-size:0.76rem;font-weight:600;color:${meta.color};background:${meta.color}18;padding:2px 7px;border-radius:4px;border:1px solid ${meta.color}35;">
+                                                    ${meta.emoji} ${meta.label}
+                                                </span>
+                                            </td>
+                                            <td style="font-size:0.78rem;color:var(--text-muted);">${log.table || '—'}</td>
+                                            <td style="font-family:monospace;font-size:0.75rem;color:var(--primary);">${log.recordId || '—'}</td>
+                                            <td style="font-size:0.78rem;max-width:220px;word-break:break-word;">${log.details || ''}</td>
+                                        </tr>
+                                    `;
+                                })}
+                            </tbody>
+                        </table>
+                        ${filtered.length === 0 && html`
+                            <div style="padding:40px;text-align:center;color:var(--text-muted);">
+                                <${Icon} name="inbox" size="32" style="display:block;margin:0 auto 10px;opacity:0.3;" />
+                                ไม่พบรายการในบันทึก
+                            </div>
+                        `}
+                    </div>
+                    ${filtered.length > displayLimit && html`
+                        <div style="padding:12px 16px;text-align:center;border-top:1px solid var(--border-color);">
+                            <button class="btn btn-secondary" onClick=${() => setDisplayLimit(d => d + 100)}>
+                                <${Icon} name="chevron-down" /> โหลดเพิ่มอีก 100 รายการ
+                            </button>
+                        </div>
+                    `}
+                `}
+            </div>
+        </div>
+    `;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 1: LoginForm
 // Full-screen login page matching the app's dark theme.

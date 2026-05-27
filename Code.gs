@@ -27,6 +27,8 @@ function doPost(e) {
       case 'getUsers':       result = handleGetUsers(data);      break;
       case 'createUser':     result = handleCreateUser(data);    break;
       case 'updateUser':     result = handleUpdateUser(data);    break;
+      case 'getAuditLog':    result = handleGetAuditLog(data);   break;
+      case 'logAction':      result = handleLogActionFrontend(data); break;
       default:
         result = { success: false, message: 'Unknown action: ' + data.action };
     }
@@ -279,6 +281,42 @@ function handleUpdateUser(data) {
     }
   }
   return { success: false, message: 'ไม่พบผู้ใช้งาน' };
+}
+
+// ─── Handle Get Audit Log (Phase 4) ──────────────────────────────────────────
+function handleGetAuditLog(data) {
+  const requester = requireRole(data.token, 5); // admin only
+  if (!requester.success) return requester;
+
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const auditSheet = ss.getSheetByName('AuditLog');
+  if (!auditSheet) return { success: true, logs: [] };
+
+  const rows = auditSheet.getDataRange().getValues();
+  const logs = [];
+  // Reverse order: newest first (skip header row i=0)
+  for (let i = rows.length - 1; i >= 1; i--) {
+    logs.push({
+      timestamp: rows[i][0],
+      userId:    rows[i][1],
+      username:  rows[i][2],
+      fullName:  rows[i][2], // stored as user_name in col 2
+      action:    rows[i][3],
+      table:     rows[i][4],
+      recordId:  rows[i][5],
+      details:   rows[i][7]
+    });
+  }
+  return { success: true, logs };
+}
+
+// ─── Handle Log Action from Frontend (Phase 4) ────────────────────────────────
+function handleLogActionFrontend(data) {
+  const v = handleValidateToken({ token: data.token });
+  if (!v.valid) return { success: false };
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  logAudit(ss, v.user.id, v.user.fullName, data.action, data.table || '', data.recordId || '', '', data.details || '');
+  return { success: true };
 }
 
 // ─── Helper: Require Role Level ───────────────────────────────────────────────

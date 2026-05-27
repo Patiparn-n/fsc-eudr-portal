@@ -12,9 +12,10 @@ import {
     TimberDeliveryNote,
     VesselShipment,
     MonthlyReport,
-    UserManagement
+    UserManagement,
+    AuditLog
 } from './components.js';
-import { authLogin, authLogout, authValidateToken, getUsers, createUser, updateUser } from './api.js';
+import { authLogin, authLogout, authValidateToken, getUsers, createUser, updateUser, logAction, getAuditLog } from './api.js';
 import { DEMO_MODE } from './config.js';
 
 const html = htm.bind(h);
@@ -233,6 +234,10 @@ function App() {
     const [users, setUsers] = useState([]);
     const [usersLoading, setUsersLoading] = useState(false);
 
+    // ─── Audit Log State (Phase 4) ────────────────────────────────────────────
+    const [auditLogs, setAuditLogs] = useState([]);
+    const [auditLoading, setAuditLoading] = useState(false);
+
     // Initial Load & Seeding (with version-based migration)
     useEffect(() => {
         const storedVersion = localStorage.getItem('fsc_eudr_version');
@@ -280,6 +285,13 @@ function App() {
     useEffect(() => {
         if (tab === 'user-management' && users.length === 0) {
             loadUsers();
+        }
+    }, [tab]);
+
+    // Load audit log when audit tab is opened (always refresh)
+    useEffect(() => {
+        if (tab === 'audit-log') {
+            loadAuditLog();
         }
     }, [tab]);
 
@@ -338,6 +350,7 @@ function App() {
         setPlantations(updated);
         setEditPlantationId(null);
         setTab('plantations');
+        logAction(currentUser, editPlantationId ? 'UPDATE_PLANTATION' : 'CREATE_PLANTATION', 'Plantations', data.id, '');
     };
 
     // Delete Plantation (cascades to shipments)
@@ -349,6 +362,7 @@ function App() {
             const updatedShip = shipments.filter(s => s.plantationId !== id);
             localStorage.setItem('fsc_eudr_shipments', JSON.stringify(updatedShip));
             setShipments(updatedShip);
+            logAction(currentUser, 'DELETE_PLANTATION', 'Plantations', id, '');
         }
     };
 
@@ -363,6 +377,7 @@ function App() {
         const updated = [...shipments, data];
         localStorage.setItem('fsc_eudr_shipments', JSON.stringify(updated));
         setShipments(updated);
+        logAction(currentUser, 'ADD_SHIPMENT', 'CoC', data.id, '');
         alert('บันทึกการส่งมอบไม้ในสมุดบัญชี CoC สำเร็จ!');
         setTab('dashboard');
     };
@@ -373,6 +388,7 @@ function App() {
             const updated = shipments.filter(s => s.id !== id);
             localStorage.setItem('fsc_eudr_shipments', JSON.stringify(updated));
             setShipments(updated);
+            logAction(currentUser, 'DELETE_SHIPMENT', 'CoC', id, '');
         }
     };
 
@@ -413,6 +429,7 @@ function App() {
         localStorage.setItem('fsc_eudr_vessel_shipments', JSON.stringify(updated));
         setVesselShipments(updated);
         lockPlots(plotIds, data.id, data.createdDate);
+        logAction(currentUser, 'ADD_VESSEL', 'VesselShipments', data.id, plotIds.length + ' แปลง');
         alert(`บันทึก Vessel DDS สำเร็จ! (${data.id})\n🔒 ล็อคแปลงที่เลือก ${plotIds.length} แปลง เป็นเวลา 912 วัน`);
     };
 
@@ -425,6 +442,7 @@ function App() {
             if (plotIds && plotIds.length > 0) {
                 unlockPlots(plotIds);
             }
+            logAction(currentUser, 'DELETE_VESSEL', 'VesselShipments', id, '');
         }
     };
 
@@ -467,6 +485,7 @@ function App() {
                         setPlantations(data.plantations);
                         setShipments(data.shipments);
                         setVesselShipments(vsData);
+                        logAction(currentUser, 'IMPORT_DATA', 'All', '', data.plantations.length + ' แปลง');
                         alert(`นำเข้าข้อมูลสำเร็จ! (${data.plantations.length} แปลง, ${data.shipments.length} รายการขนส่ง, ${vsCount} Vessel DDS)`);
                     }
                 } else {
@@ -510,6 +529,7 @@ function App() {
                 await authLogout(session.token);
             } catch {}
         }
+        logAction(currentUser, 'LOGOUT', 'Sessions', currentUser?.username, '');
         localStorage.removeItem('fsc_eudr_session');
         setCurrentUser(null);
         setTab('dashboard');
@@ -533,6 +553,7 @@ function App() {
         });
         localStorage.setItem('fsc_eudr_plantations', JSON.stringify(updated));
         setPlantations(updated);
+        logAction(currentUser, 'APPROVE_PLANTATION', 'Plantations', id, '');
     };
 
     const handleReject = (id, reason) => {
@@ -552,6 +573,7 @@ function App() {
         });
         localStorage.setItem('fsc_eudr_plantations', JSON.stringify(updated));
         setPlantations(updated);
+        logAction(currentUser, 'REJECT_PLANTATION', 'Plantations', id, reason || 'ไม่ระบุเหตุผล');
     };
 
     // ─── Phase 3: User Management Handlers ───────────────────────────────────
@@ -569,14 +591,30 @@ function App() {
 
     const handleCreateUser = async (userData) => {
         const result = await createUser(getSessionToken(), userData);
-        if (result.success) await loadUsers();
+        if (result.success) {
+            await loadUsers();
+            logAction(currentUser, 'CREATE_USER', 'Users', result.userId, userData.username);
+        }
         return result;
     };
 
     const handleUpdateUser = async (userId, changes) => {
         const result = await updateUser(getSessionToken(), userId, changes);
-        if (result.success) await loadUsers();
+        if (result.success) {
+            await loadUsers();
+            const detail = changes.active !== undefined ? (changes.active ? 'เปิดใช้งาน' : 'ระงับบัญชี') : Object.keys(changes).join(', ');
+            logAction(currentUser, 'UPDATE_USER', 'Users', userId, detail);
+        }
         return result;
+    };
+
+    // ─── Phase 4: Audit Log ────────────────────────────────────────────────────
+    const loadAuditLog = async () => {
+        setAuditLoading(true);
+        try {
+            const result = await getAuditLog(getSessionToken());
+            if (result.success) setAuditLogs(result.logs);
+        } finally { setAuditLoading(false); }
     };
 
     // ─── Role & Display Labels ─────────────────────────────────────────────────
@@ -690,6 +728,13 @@ function App() {
                     <li>
                         <a class="nav-item ${tab === 'user-management' ? 'active' : ''}" onClick=${() => { setTab('user-management'); closeNav(); }}>
                             <${Icon} name="users" /> จัดการผู้ใช้งาน
+                        </a>
+                    </li>
+                    `}
+                    ${roleLevel >= 5 && html`
+                    <li>
+                        <a class="nav-item ${tab === 'audit-log' ? 'active' : ''}" onClick=${() => { setTab('audit-log'); closeNav(); }}>
+                            <${Icon} name="clipboard-list" /> บันทึกการใช้งาน
                         </a>
                     </li>
                     `}
@@ -828,6 +873,10 @@ function App() {
                         onUpdateUser=${handleUpdateUser}
                         onRefresh=${loadUsers}
                     />
+                `}
+
+                ${tab === 'audit-log' && roleLevel >= 5 && html`
+                    <${AuditLog} logs=${auditLogs} loading=${auditLoading} />
                 `}
             </main>
         </div>

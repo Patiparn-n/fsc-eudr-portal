@@ -116,6 +116,7 @@ export async function authLogin(username, password) {
         const token = 'demo-' + username + '-' + Date.now();
         const userObj = demoUserToObj(u);
         DEMO_SESSIONS[token] = userObj;
+        addDemoAuditEntry(userObj.id, userObj.username, userObj.fullName, 'LOGIN', 'Sessions', '', '');
         return {
             success: true, token, user: userObj,
             expiresAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
@@ -162,6 +163,24 @@ export async function authLogout(token) {
     } catch {
         return { success: true }; // Silent fail — session already cleared client-side
     }
+}
+
+// ─── Audit Log helpers (Phase 4) ─────────────────────────────────────────────
+function getDemoAuditLog() {
+    try {
+        const stored = localStorage.getItem('fsc_eudr_audit_log');
+        if (stored) return JSON.parse(stored);
+    } catch {}
+    return [];
+}
+function addDemoAuditEntry(userId, username, fullName, action, table, recordId, details) {
+    const logs = getDemoAuditLog();
+    logs.unshift({
+        timestamp: new Date().toISOString(),
+        userId: userId || '', username: username || '', fullName: fullName || '',
+        action, table: table || '', recordId: recordId || '', details: details || ''
+    });
+    localStorage.setItem('fsc_eudr_audit_log', JSON.stringify(logs.slice(0, 1000)));
 }
 
 // ─── Users: Get All (Phase 3) ─────────────────────────────────────────────────
@@ -221,4 +240,24 @@ export async function updateUser(token, userId, changes) {
         return { success: true };
     }
     return apiCall('updateUser', { token, userId, ...changes });
+}
+
+// ─── Audit: Log Action (Phase 4) ──────────────────────────────────────────────
+// Pass current user object + action details. Fire-and-forget in production.
+export function logAction(user, action, table, recordId, details) {
+    if (!user) return;
+    if (DEMO_MODE) {
+        addDemoAuditEntry(user.id, user.username, user.fullName, action, table || '', recordId || '', details || '');
+        return;
+    }
+    // Production: fire-and-forget — don't block UI
+    apiCall('logAction', { action, table, recordId, details: details || '', userId: user.id, userName: user.fullName }).catch(() => {});
+}
+
+// ─── Audit: Get Log (Phase 4) ─────────────────────────────────────────────────
+export async function getAuditLog(token) {
+    if (DEMO_MODE) {
+        return { success: true, logs: getDemoAuditLog() };
+    }
+    return apiCall('getAuditLog', { token });
 }
