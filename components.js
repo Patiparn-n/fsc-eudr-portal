@@ -778,9 +778,11 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
         }
 
         // Phase 2: Auto-set approval status based on submitter's role
-        const isNewOrRejected = !editMode || form.status === 'rejected';
+        // Triggers on: new record, re-submit after rejection, edit of approved record
+        // Does NOT trigger on edit of pending record (already awaiting review — just update data)
+        const needsApproval = !editMode || form.status === 'rejected' || form.status === 'approved';
         const approvalFields = {};
-        if (isNewOrRejected && currentUser) {
+        if (needsApproval && currentUser) {
             const submittedBy = {
                 userId: currentUser.id,
                 username: currentUser.username,
@@ -788,7 +790,7 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                 submittedAt: new Date().toISOString()
             };
             if (currentUser.roleLevel >= 3) {
-                // FSC Staff+ auto-approves their own submission
+                // FSC Staff+ auto-approves their own submission / edit
                 approvalFields.status = 'approved';
                 approvalFields.statusNote = '';
                 approvalFields.submittedBy = submittedBy;
@@ -843,6 +845,44 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                             ผูกกับ Vessel DDS: <b style="color:#f59e0b;">${form.lockedByVesselId}</b> —
                             เหลือเวลาล็อค <b style="color:#ef4444;">${editLockStatus.daysLeft}</b> วัน
                             (หมดอายุ: ${new Date(form.lockExpiryDate).toLocaleDateString('th-TH')})
+                        </div>
+                    </div>
+                </div>
+            `}
+
+            ${editMode && form.status === 'approved' && currentUser && (currentUser.roleLevel || 1) < 3 && html`
+                <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.45);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start;">
+                    <span style="font-size:1.5rem;line-height:1;">⚠️</span>
+                    <div>
+                        <div style="font-weight:700;color:#f59e0b;font-size:0.93rem;">การแก้ไขจะส่งขออนุมัติใหม่</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);margin-top:3px;line-height:1.5;">
+                            แปลงนี้ได้รับการอนุมัติแล้ว — เมื่อบันทึกการแก้ไข สถานะจะถูกรีเซ็ตเป็น
+                            <b style="color:#f59e0b;">รอตรวจสอบ</b> และต้องผ่านการอนุมัติจาก <b>FSC Staff</b> หรือสูงกว่า
+                            ก่อนนำข้อมูลนี้ไปใช้งานได้อีกครั้ง
+                        </div>
+                    </div>
+                </div>
+            `}
+
+            ${editMode && form.status === 'approved' && currentUser && (currentUser.roleLevel || 1) >= 3 && html`
+                <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start;">
+                    <span style="font-size:1.5rem;line-height:1;">✅</span>
+                    <div>
+                        <div style="font-weight:700;color:#10b981;font-size:0.93rem;">บันทึกโดยไม่ต้องรอการอนุมัติเพิ่มเติม</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);margin-top:3px;">
+                            ในฐานะ <b>FSC Staff</b> ขึ้นไป การแก้ไขของคุณจะบันทึกและ <b style="color:#10b981;">อนุมัติอัตโนมัติ</b> ทันที
+                        </div>
+                    </div>
+                </div>
+            `}
+
+            ${editMode && form.status === 'pending' && html`
+                <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.35);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start;">
+                    <span style="font-size:1.5rem;line-height:1;">🕐</span>
+                    <div>
+                        <div style="font-weight:700;color:#3b82f6;font-size:0.93rem;">แปลงนี้อยู่ระหว่างรอการตรวจสอบ</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);margin-top:3px;">
+                            สามารถแก้ไขข้อมูลได้ — ผู้ตรวจสอบจะเห็นข้อมูลล่าสุดเมื่อทำการอนุมัติหรือปฏิเสธ
                         </div>
                     </div>
                 </div>
