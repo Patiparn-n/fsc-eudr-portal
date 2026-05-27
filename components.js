@@ -336,7 +336,7 @@ export function InteractiveMap({ mode = "view", type = "point", coordinates, onC
 // -------------------------------------------------------------
 // Component: Dashboard Overview
 // -------------------------------------------------------------
-export function Dashboard({ plantations, shipments, setTab, setSelectedPlantationId }) {
+export function Dashboard({ plantations, shipments, setTab, setSelectedPlantationId, pendingCount, roleLevel }) {
     const totalAreaRai = plantations.reduce((sum, p) => sum + parseFloat(p.areaRai || 0), 0);
     const totalAreaHec = (totalAreaRai / 6.25).toFixed(2);
     const totalVolume = shipments.reduce((sum, s) => sum + parseFloat(s.weight || 0), 0);
@@ -367,6 +367,14 @@ export function Dashboard({ plantations, shipments, setTab, setSelectedPlantatio
             });
         }
     });
+
+    if (pendingCount > 0 && roleLevel >= 3) {
+        warnings.unshift({
+            type: 'info',
+            title: `มีแปลงรอการตรวจสอบ ${pendingCount} แปลง`,
+            msg: `กรุณาไปที่ "ฐานข้อมูลแปลงปลูก" เพื่ออนุมัติหรือปฏิเสธแปลงที่รอตรวจสอบ`
+        });
+    }
 
     if (warnings.length === 0) {
         warnings.push({
@@ -533,7 +541,7 @@ export function Dashboard({ plantations, shipments, setTab, setSelectedPlantatio
 // -------------------------------------------------------------
 // Component: Plantation Form (Insert / Update)
 // -------------------------------------------------------------
-export function PlantationForm({ plantations, onSave, onCancel, editPlantationId }) {
+export function PlantationForm({ plantations, onSave, onCancel, editPlantationId, currentUser }) {
     const editMode = !!editPlantationId;
     const defaultPlantation = editMode
         ? plantations.find(p => p.id === editPlantationId)
@@ -587,7 +595,12 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
             registeredAt: new Date().toISOString(),
             lastUsedDate: null,
             lockedByVesselId: null,
-            lockExpiryDate: null
+            lockExpiryDate: null,
+            // Phase 2: Approval Workflow
+            status: 'pending',
+            statusNote: '',
+            submittedBy: null,
+            reviewedBy: null
         };
 
     const [form, setForm] = useState({ ...defaultPlantation });
@@ -739,8 +752,39 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
             return;
         }
 
+        // Phase 2: Auto-set approval status based on submitter's role
+        const isNewOrRejected = !editMode || form.status === 'rejected';
+        const approvalFields = {};
+        if (isNewOrRejected && currentUser) {
+            const submittedBy = {
+                userId: currentUser.id,
+                username: currentUser.username,
+                fullName: currentUser.fullName,
+                submittedAt: new Date().toISOString()
+            };
+            if (currentUser.roleLevel >= 3) {
+                // FSC Staff+ auto-approves their own submission
+                approvalFields.status = 'approved';
+                approvalFields.statusNote = '';
+                approvalFields.submittedBy = submittedBy;
+                approvalFields.reviewedBy = {
+                    userId: currentUser.id,
+                    username: currentUser.username,
+                    fullName: currentUser.fullName,
+                    reviewedAt: new Date().toISOString()
+                };
+            } else {
+                // Procurement → pending, awaiting FSC Staff review
+                approvalFields.status = 'pending';
+                approvalFields.statusNote = '';
+                approvalFields.submittedBy = submittedBy;
+                approvalFields.reviewedBy = null;
+            }
+        }
+
         const finalData = {
             ...form,
+            ...approvalFields,
             treeAge: treeAgeMonths,
             fscCwVerdict,
             hcvNonCompliant,
@@ -1509,10 +1553,19 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
 // -------------------------------------------------------------
 const PLT_PAGE_SIZE = 10;
 
-export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelectedPlantationId }) {
+export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelectedPlantationId, currentUser, onApprove, onReject }) {
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [page, setPage] = useState(1);
+
+    const roleLevel = currentUser ? (currentUser.roleLevel || 1) : 1;
+
+    const handleRejectPrompt = (id) => {
+        const reason = window.prompt('ระบุเหตุผลในการปฏิเสธแปลงนี้:');
+        if (reason !== null && onReject) {
+            onReject(id, reason.trim() || 'ไม่ระบุเหตุผล');
+        }
+    };
 
     const filtered = plantations.filter(p => {
         const q = search.toLowerCase();
@@ -1526,7 +1579,10 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
             statusFilter === 'compliant' ? p.eudrCompliant :
             statusFilter === 'non-compliant' ? !p.eudrCompliant :
             statusFilter === 'fsc100' ? p.fscStatus === 'FSC 100%' :
-            statusFilter === 'cw' ? p.fscStatus === 'FSC Controlled Wood' : true;
+            statusFilter === 'cw' ? p.fscStatus === 'FSC Controlled Wood' :
+            statusFilter === 'pending' ? p.status === 'pending' :
+            statusFilter === 'approved-status' ? (!p.status || p.status === 'approved') :
+            statusFilter === 'rejected' ? p.status === 'rejected' : true;
         return matchText && matchStatus;
     });
 
@@ -1600,6 +1656,9 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
                             <option value="non-compliant">EUDR ไม่ผ่าน</option>
                             <option value="fsc100">FSC 100%</option>
                             <option value="cw">FSC Controlled Wood</option>
+                            <option value="pending">⏳ รอตรวจสอบ</option>
+                            <option value="approved-status">✅ อนุมัติแล้ว</option>
+                            <option value="rejected">❌ ปฏิเสธ</option>
                         </select>
                     </div>
                     <span style="font-size:0.85rem; color:var(--text-muted); white-space:nowrap;">
@@ -1664,9 +1723,19 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
                                                 🔒 ล็อค ${lockStatuses[p.id].daysLeft} วัน
                                             </div>
                                         `}
+                                        ${p.status === 'pending' && html`<div style="font-size:0.7rem;color:#f59e0b;margin-top:3px;font-weight:600;">⏳ รอตรวจสอบ</div>`}
+                                        ${p.status === 'rejected' && html`<div style="font-size:0.7rem;color:#ef4444;margin-top:3px;font-weight:600;">❌ ปฏิเสธ${p.statusNote ? ': ' + p.statusNote : ''}</div>`}
                                     </td>
                                     <td style="text-align:right;">
-                                        <div style="display:inline-flex; gap:6px;">
+                                        <div style="display:inline-flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                                            ${roleLevel >= 3 && p.status === 'pending' && html`
+                                                <button class="action-btn" style="color:#10b981;border-color:rgba(16,185,129,0.4);" title="อนุมัติ" onClick=${() => onApprove(p.id)}>
+                                                    <${Icon} name="check" />
+                                                </button>
+                                                <button class="action-btn" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="ปฏิเสธ" onClick=${() => handleRejectPrompt(p.id)}>
+                                                    <${Icon} name="x" />
+                                                </button>
+                                            `}
                                             <button class="action-btn btn-view" title="ดูรายงาน DDS" onClick=${() => viewDds(p.id)}>
                                                 <${Icon} name="file-text" />
                                             </button>
@@ -1719,7 +1788,7 @@ export function CocLedger({ shipments, plantations, onAddShipment, onDeleteShipm
         fscClaim: 'FSC Controlled Wood'
     });
 
-    const activePlantations = plantations.filter(p => p.eudrCompliant);
+    const activePlantations = plantations.filter(p => p.eudrCompliant && (!p.status || p.status === 'approved'));
 
     const filteredShipments = search.trim()
         ? shipments.filter(s => {
@@ -2452,7 +2521,7 @@ export function VesselShipment({ vesselShipments, plantations, onAddVesselShipme
 
     // C2: Only EUDR-compliant plots that are NOT currently locked
     const eligiblePlots = plantations
-        .filter(p => p.eudrCompliant && !getPlotLockStatus(p).locked)
+        .filter(p => p.eudrCompliant && (!p.status || p.status === 'approved') && !getPlotLockStatus(p).locked)
         .sort((a, b) => parseFloat(b.estVolume) - parseFloat(a.estVolume));
 
     const actualWeight = selectedPltIds.reduce((sum, id) => {

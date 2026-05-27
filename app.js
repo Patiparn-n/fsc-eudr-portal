@@ -21,7 +21,8 @@ const html = htm.bind(h);
 // App data version — bump this to clear localStorage on schema changes
 // v2.2: A2 Customer ID, B1 Eucalyptus species, B2 HCV 6-question, B3 targetMill, A7 DO user-entered
 // v2.3: C1 Monthly Report, C2 Vessel Shipment, C3 Plot Reuse Lock (912-day lock + registeredAt)
-const APP_VERSION = '2.3';
+// v2.4: Phase 2 Approval Workflow — plantation status: pending / approved / rejected
+const APP_VERSION = '2.4';
 
 // Seed Data (new schema: id=FSC-xxxxxx, plotCode=3-digit string)
 const SEED_PLANTATIONS = [
@@ -66,7 +67,11 @@ const SEED_PLANTATIONS = [
         registeredAt: '2026-03-10T08:00:00.000Z',
         lastUsedDate: null,
         lockedByVesselId: null,
-        lockExpiryDate: null
+        lockExpiryDate: null,
+        status: 'approved',
+        statusNote: '',
+        submittedBy: null,
+        reviewedBy: null
     },
     {
         id: 'FSC-090222',
@@ -114,7 +119,11 @@ const SEED_PLANTATIONS = [
         registeredAt: '2026-04-05T09:00:00.000Z',
         lastUsedDate: null,
         lockedByVesselId: null,
-        lockExpiryDate: null
+        lockExpiryDate: null,
+        status: 'approved',
+        statusNote: '',
+        submittedBy: null,
+        reviewedBy: null
     },
     {
         id: 'FSC-030441',
@@ -161,7 +170,11 @@ const SEED_PLANTATIONS = [
         registeredAt: '2026-05-01T10:00:00.000Z',
         lastUsedDate: null,
         lockedByVesselId: null,
-        lockExpiryDate: null
+        lockExpiryDate: null,
+        status: 'approved',
+        statusNote: '',
+        submittedBy: null,
+        reviewedBy: null
     }
 ];
 
@@ -489,6 +502,45 @@ function App() {
         setTab('dashboard');
     };
 
+    // ─── Phase 2: Approval Handlers ───────────────────────────────────────────
+    const handleApprove = (id) => {
+        const updated = plantations.map(p => {
+            if (p.id !== id) return p;
+            return {
+                ...p,
+                status: 'approved',
+                statusNote: '',
+                reviewedBy: {
+                    userId: currentUser.id,
+                    username: currentUser.username,
+                    fullName: currentUser.fullName,
+                    reviewedAt: new Date().toISOString()
+                }
+            };
+        });
+        localStorage.setItem('fsc_eudr_plantations', JSON.stringify(updated));
+        setPlantations(updated);
+    };
+
+    const handleReject = (id, reason) => {
+        const updated = plantations.map(p => {
+            if (p.id !== id) return p;
+            return {
+                ...p,
+                status: 'rejected',
+                statusNote: reason || 'ไม่ระบุเหตุผล',
+                reviewedBy: {
+                    userId: currentUser.id,
+                    username: currentUser.username,
+                    fullName: currentUser.fullName,
+                    reviewedAt: new Date().toISOString()
+                }
+            };
+        });
+        localStorage.setItem('fsc_eudr_plantations', JSON.stringify(updated));
+        setPlantations(updated);
+    };
+
     // ─── Role & Display Labels ─────────────────────────────────────────────────
     // (computed after auth guards — currentUser guaranteed non-null here)
     const ROLE_LABELS = {
@@ -525,6 +577,10 @@ function App() {
     // ── currentUser is guaranteed non-null from here ──
     const roleLevel = currentUser.roleLevel || 1;
     const roleInfo = ROLE_LABELS[currentUser.role] || FALLBACK_ROLE;
+
+    // Phase 2: filtered plantation sets
+    const approvedPlantations = plantations.filter(p => !p.status || p.status === 'approved');
+    const pendingCount = plantations.filter(p => p.status === 'pending').length;
 
     const closeNav = () => setSidebarOpen(false);
 
@@ -647,6 +703,8 @@ function App() {
                         shipments=${shipments}
                         setTab=${setTab}
                         setSelectedPlantationId=${(id) => { setSelectedPlantationId(id); setTab('dds-report'); }}
+                        pendingCount=${pendingCount}
+                        roleLevel=${roleLevel}
                     />
                 `}
 
@@ -657,6 +715,9 @@ function App() {
                         onEdit=${triggerEdit}
                         setTab=${setTab}
                         setSelectedPlantationId=${setSelectedPlantationId}
+                        currentUser=${currentUser}
+                        onApprove=${handleApprove}
+                        onReject=${handleReject}
                     />
                 `}
 
@@ -666,6 +727,7 @@ function App() {
                         onSave=${savePlantation}
                         onCancel=${() => { setEditPlantationId(null); setTab('plantations'); }}
                         editPlantationId=${editPlantationId}
+                        currentUser=${currentUser}
                     />
                 `}
 
