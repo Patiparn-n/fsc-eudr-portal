@@ -4,6 +4,31 @@ import htm from 'https://esm.sh/htm';
 
 const html = htm.bind(h);
 
+// ─── Role reference table (used by UserManagement + role badges) ─────────────
+const ROLE_OPTIONS = [
+    { value: 'procurement',     label: 'จัดซื้อ',           level: 1 },
+    { value: 'procurement_mgr', label: 'จัดซื้อ (อาวุโส)', level: 2 },
+    { value: 'fsc_staff',       label: 'FSC Staff',          level: 3 },
+    { value: 'manager',         label: 'ผู้จัดการ',          level: 4 },
+    { value: 'admin',           label: 'ผู้ดูแลระบบ',       level: 5 },
+];
+const ROLE_BADGE_COLORS = {
+    admin:           { text: '#ef4444', bg: 'rgba(239,68,68,0.1)',    border: 'rgba(239,68,68,0.35)'    },
+    manager:         { text: '#a855f7', bg: 'rgba(168,85,247,0.1)',   border: 'rgba(168,85,247,0.35)'   },
+    fsc_staff:       { text: '#3b82f6', bg: 'rgba(59,130,246,0.1)',   border: 'rgba(59,130,246,0.35)'   },
+    procurement_mgr: { text: '#10b981', bg: 'rgba(16,185,129,0.1)',   border: 'rgba(16,185,129,0.35)'   },
+    procurement:     { text: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.3)'  },
+};
+
+// Password strength validation
+function validatePassword(pw) {
+    if (!pw || pw.length < 8) return 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร';
+    if (!/[A-Z]/.test(pw)) return 'ต้องมีตัวอักษรพิมพ์ใหญ่อย่างน้อย 1 ตัว (A-Z)';
+    if (!/[a-z]/.test(pw)) return 'ต้องมีตัวอักษรพิมพ์เล็กอย่างน้อย 1 ตัว (a-z)';
+    if (!/[0-9]/.test(pw)) return 'ต้องมีตัวเลขอย่างน้อย 1 ตัว (0-9)';
+    return '';
+}
+
 // Species list — ยูคาลิปตัสตามคู่มือ CoC Manual ของบริษัท SAAA
 const SPECIES_LIST = [
     'Eucalyptus camaldulensis (ยูคาลิปตัสน้ำ)',
@@ -2862,6 +2887,274 @@ export function MonthlyReport({ plantations, shipments, vesselShipments }) {
                     </div>
                 `;
             })}
+        </div>
+    `;
+}
+
+// =============================================================
+// Component: UserManagement (Phase 3 — Admin only, level 5)
+// =============================================================
+export function UserManagement({ currentUser, users, usersLoading, onCreateUser, onUpdateUser, onRefresh }) {
+    const [search, setSearch] = useState('');
+    const [showForm, setShowForm] = useState(false);
+    const [editUserId, setEditUserId] = useState(null);
+    const [formError, setFormError] = useState('');
+    const [formSuccess, setFormSuccess] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const creatorLevel = currentUser ? (currentUser.roleLevel || 1) : 1;
+    const availableRoles = ROLE_OPTIONS.filter(o => o.level < creatorLevel);
+
+    const emptyForm = { username: '', fullName: '', department: '', role: 'procurement', roleLevel: 1, password: '', confirmPassword: '' };
+    const [form, setForm] = useState(emptyForm);
+
+    const filtered = users.filter(u => {
+        const s = search.toLowerCase();
+        return !s || u.username.toLowerCase().includes(s) || u.fullName.toLowerCase().includes(s) || (u.department || '').toLowerCase().includes(s);
+    });
+
+    const openNew = () => {
+        setEditUserId(null); setForm(emptyForm);
+        setFormError(''); setFormSuccess(''); setShowForm(true);
+    };
+    const openEdit = (u) => {
+        setEditUserId(u.id);
+        setForm({ username: u.username, fullName: u.fullName, department: u.department, role: u.role, roleLevel: u.roleLevel, password: '', confirmPassword: '' });
+        setFormError(''); setFormSuccess(''); setShowForm(true);
+    };
+    const closeForm = () => { setShowForm(false); setEditUserId(null); setFormError(''); };
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setForm(f => ({ ...f, [name]: value }));
+    };
+    const handleRoleChange = (e) => {
+        const val = e.target.value;
+        const opt = ROLE_OPTIONS.find(o => o.value === val);
+        setForm(f => ({ ...f, role: val, roleLevel: opt ? opt.level : 1 }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setFormError('');
+        if (!form.fullName.trim()) { setFormError('กรุณากรอกชื่อ-นามสกุล'); return; }
+        if (!form.department.trim()) { setFormError('กรุณากรอกแผนก'); return; }
+        if (!editUserId && !form.username.trim()) { setFormError('กรุณากรอกชื่อผู้ใช้งาน'); return; }
+        if (!editUserId && !form.password) { setFormError('กรุณากรอกรหัสผ่าน'); return; }
+        if (form.password) {
+            const pwErr = validatePassword(form.password);
+            if (pwErr) { setFormError(pwErr); return; }
+            if (form.password !== form.confirmPassword) { setFormError('รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน'); return; }
+        }
+        setSaving(true);
+        try {
+            let result;
+            if (editUserId) {
+                const changes = { fullName: form.fullName.trim(), department: form.department.trim(), role: form.role, roleLevel: form.roleLevel };
+                if (form.password) changes.password = form.password;
+                result = await onUpdateUser(editUserId, changes);
+            } else {
+                result = await onCreateUser({
+                    username: form.username.trim(), password: form.password,
+                    fullName: form.fullName.trim(), role: form.role, roleLevel: form.roleLevel,
+                    department: form.department.trim(), createdBy: currentUser?.username || 'admin'
+                });
+            }
+            if (result.success) {
+                setFormSuccess(editUserId ? `อัปเดต "${form.username}" สำเร็จ` : `สร้างผู้ใช้ "${form.username.trim()}" สำเร็จ`);
+                setShowForm(false); setEditUserId(null); onRefresh();
+            } else {
+                setFormError(result.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+            }
+        } finally { setSaving(false); }
+    };
+
+    const handleToggleActive = async (u) => {
+        if (u.id === currentUser?.id) { alert('ไม่สามารถระงับบัญชีของตนเองได้'); return; }
+        const action = u.active ? 'ระงับ' : 'เปิดใช้งาน';
+        if (!confirm(`${action}บัญชีผู้ใช้ "${u.username}" (${u.fullName})?`)) return;
+        const result = await onUpdateUser(u.id, { active: !u.active });
+        if (result.success) { setFormSuccess(`${action}บัญชี "${u.username}" สำเร็จ`); onRefresh(); }
+        else { alert(result.message || 'เกิดข้อผิดพลาด'); }
+    };
+
+    return html`
+        <div>
+            <div class="header-actions">
+                <div class="page-title">
+                    <h1>จัดการผู้ใช้งาน</h1>
+                    <p>สร้าง แก้ไข หรือระงับบัญชีผู้ใช้งานในระบบ (Admin only)</p>
+                </div>
+                ${!showForm && html`
+                    <button class="btn btn-primary" onClick=${openNew}>
+                        <${Icon} name="user-plus" /> เพิ่มผู้ใช้ใหม่
+                    </button>
+                `}
+            </div>
+
+            ${formSuccess && html`
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);color:#10b981;font-size:0.875rem;">
+                    <${Icon} name="check-circle" size="15" /> ${formSuccess}
+                </div>
+            `}
+
+            ${showForm && html`
+                <div class="card" style="margin-bottom:24px;">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <${Icon} name=${editUserId ? 'edit' : 'user-plus'} />
+                            ${editUserId ? 'แก้ไขข้อมูลผู้ใช้' : 'เพิ่มผู้ใช้งานใหม่'}
+                        </h3>
+                    </div>
+                    <form onSubmit=${handleSubmit}>
+                        <div class="form-grid" style="padding:16px 16px 8px;">
+                            <div class="form-group">
+                                <label class="form-label">ชื่อผู้ใช้งาน (Username) *</label>
+                                <input class="form-control" name="username" value=${form.username}
+                                    onChange=${handleChange}
+                                    placeholder="ตัวอักษร ตัวเลข _ เท่านั้น (ไม่สามารถแก้ไขได้ภายหลัง)"
+                                    disabled=${!!editUserId} required />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">ชื่อ-นามสกุล *</label>
+                                <input class="form-control" name="fullName" value=${form.fullName}
+                                    onChange=${handleChange} placeholder="ชื่อ-นามสกุลภาษาไทย" required />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">แผนก *</label>
+                                <input class="form-control" name="department" value=${form.department}
+                                    onChange=${handleChange} placeholder="เช่น จัดซื้อ, IT, Management" required />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">บทบาท (Role) *</label>
+                                <select class="form-control" value=${form.role} onChange=${handleRoleChange}
+                                    disabled=${editUserId && editUserId === currentUser?.id}>
+                                    ${availableRoles.map(o => html`
+                                        <option key=${o.value} value=${o.value}>${o.label} — Level ${o.level}</option>
+                                    `)}
+                                </select>
+                                ${editUserId === currentUser?.id && html`
+                                    <div style="font-size:0.74rem;color:var(--text-muted);margin-top:4px;">⚠️ ไม่สามารถแก้ไข role ของตนเองได้</div>
+                                `}
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">${editUserId ? 'รหัสผ่านใหม่ (เว้นว่างหากไม่เปลี่ยน)' : 'รหัสผ่าน *'}</label>
+                                <input class="form-control" type="password" name="password" value=${form.password}
+                                    onChange=${handleChange}
+                                    placeholder="อย่างน้อย 8 ตัว มี A-Z a-z 0-9" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">ยืนยันรหัสผ่าน${editUserId ? '' : ' *'}</label>
+                                <input class="form-control" type="password" name="confirmPassword" value=${form.confirmPassword}
+                                    onChange=${handleChange} placeholder="กรอกรหัสผ่านซ้ำ" />
+                            </div>
+                        </div>
+                        ${formError && html`
+                            <div style="display:flex;align-items:center;gap:8px;margin:0 16px 10px;padding:9px 13px;border-radius:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);color:#ef4444;font-size:0.85rem;">
+                                <${Icon} name="alert-circle" size="14" /> ${formError}
+                            </div>
+                        `}
+                        <div style="display:flex;gap:10px;padding:4px 16px 16px;">
+                            <button class="btn btn-primary" type="submit" disabled=${saving}>
+                                ${saving
+                                    ? html`<${Icon} name="loader" style="animation:spin 1s linear infinite" /> กำลังบันทึก...`
+                                    : html`<${Icon} name="save" /> บันทึก`}
+                            </button>
+                            <button class="btn btn-secondary" type="button" onClick=${closeForm}>
+                                <${Icon} name="x" /> ยกเลิก
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `}
+
+            <div class="card">
+                <div class="card-header" style="flex-wrap:wrap;gap:12px;">
+                    <h3 class="card-title"><${Icon} name="users" /> รายชื่อผู้ใช้งานทั้งหมด</h3>
+                    <input
+                        class="search-input" type="text"
+                        placeholder="ค้นหา username / ชื่อ / แผนก..."
+                        value=${search} onInput=${e => setSearch(e.target.value)}
+                        style="max-width:260px;"
+                    />
+                </div>
+
+                ${usersLoading ? html`
+                    <div style="padding:40px;text-align:center;color:var(--text-muted);">
+                        <${Icon} name="loader" style="animation:spin 1s linear infinite;display:block;margin:0 auto 10px;" size="24" />
+                        กำลังโหลดข้อมูลผู้ใช้...
+                    </div>
+                ` : html`
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Username</th>
+                                    <th>ชื่อ-นามสกุล</th>
+                                    <th>บทบาท</th>
+                                    <th>แผนก</th>
+                                    <th>สถานะ</th>
+                                    <th style="text-align:right;">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${filtered.map((u, idx) => {
+                                    const rc = ROLE_BADGE_COLORS[u.role] || ROLE_BADGE_COLORS.procurement;
+                                    const roleLabel = (ROLE_OPTIONS.find(o => o.value === u.role) || {}).label || u.role;
+                                    return html`
+                                        <tr key=${u.id} style="${!u.active ? 'opacity:0.48;' : ''}">
+                                            <td style="color:var(--text-muted);font-size:0.8rem;">${idx + 1}</td>
+                                            <td>
+                                                <span style="font-family:monospace;font-size:0.85rem;font-weight:600;">${u.username}</span>
+                                                ${u.id === currentUser?.id && html`<span style="font-size:0.68rem;color:var(--primary);margin-left:6px;font-weight:600;">(คุณ)</span>`}
+                                            </td>
+                                            <td style="font-size:0.875rem;">${u.fullName}</td>
+                                            <td>
+                                                <span style="font-size:0.76rem;font-weight:600;color:${rc.text};background:${rc.bg};padding:2px 8px;border-radius:4px;border:1px solid ${rc.border};white-space:nowrap;">
+                                                    ${roleLabel}
+                                                </span>
+                                            </td>
+                                            <td style="font-size:0.85rem;color:var(--text-muted);">${u.department || '—'}</td>
+                                            <td>
+                                                <span class="badge ${u.active ? 'badge-success' : 'badge-danger'}" style="font-size:0.72rem;">
+                                                    ${u.active ? '✅ ใช้งาน' : '🚫 ระงับ'}
+                                                </span>
+                                            </td>
+                                            <td style="text-align:right;">
+                                                <div style="display:inline-flex;gap:6px;">
+                                                    <button class="action-btn btn-edit" title="แก้ไขข้อมูล" onClick=${() => openEdit(u)}>
+                                                        <${Icon} name="edit" />
+                                                    </button>
+                                                    <button
+                                                        class="action-btn"
+                                                        style="${u.active ? 'color:#f59e0b;border-color:rgba(245,158,11,0.4);' : 'color:#10b981;border-color:rgba(16,185,129,0.4);'}"
+                                                        title=${u.active ? 'ระงับบัญชี' : 'เปิดใช้งานบัญชี'}
+                                                        onClick=${() => handleToggleActive(u)}
+                                                        disabled=${u.id === currentUser?.id}
+                                                    >
+                                                        <${Icon} name=${u.active ? 'user-x' : 'user-check'} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `;
+                                })}
+                            </tbody>
+                        </table>
+                        ${filtered.length === 0 && html`
+                            <div style="padding:32px;text-align:center;color:var(--text-muted);">
+                                ไม่พบข้อมูลผู้ใช้งานที่ตรงกับการค้นหา
+                            </div>
+                        `}
+                    </div>
+                    <div style="padding:10px 16px;font-size:0.8rem;color:var(--text-muted);border-top:1px solid var(--border-color);display:flex;gap:16px;">
+                        <span>ทั้งหมด <b>${filtered.length}</b> บัญชี</span>
+                        <span>ใช้งาน <b>${filtered.filter(u => u.active).length}</b></span>
+                        <span>ระงับ <b>${filtered.filter(u => !u.active).length}</b></span>
+                    </div>
+                `}
+            </div>
         </div>
     `;
 }

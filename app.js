@@ -11,9 +11,10 @@ import {
     DdsReport,
     TimberDeliveryNote,
     VesselShipment,
-    MonthlyReport
+    MonthlyReport,
+    UserManagement
 } from './components.js';
-import { authLogin, authLogout, authValidateToken } from './api.js';
+import { authLogin, authLogout, authValidateToken, getUsers, createUser, updateUser } from './api.js';
 import { DEMO_MODE } from './config.js';
 
 const html = htm.bind(h);
@@ -22,7 +23,8 @@ const html = htm.bind(h);
 // v2.2: A2 Customer ID, B1 Eucalyptus species, B2 HCV 6-question, B3 targetMill, A7 DO user-entered
 // v2.3: C1 Monthly Report, C2 Vessel Shipment, C3 Plot Reuse Lock (912-day lock + registeredAt)
 // v2.4: Phase 2 Approval Workflow — plantation status: pending / approved / rejected
-const APP_VERSION = '2.4';
+// v2.5: Phase 3 User Management — users stored in fsc_eudr_users (preserved across migrations)
+const APP_VERSION = '2.5';
 
 // Seed Data (new schema: id=FSC-xxxxxx, plotCode=3-digit string)
 const SEED_PLANTATIONS = [
@@ -227,6 +229,10 @@ function App() {
     const [loginLoading, setLoginLoading] = useState(false);
     const [authError, setAuthError] = useState('');
 
+    // ─── User Management State (Phase 3) ──────────────────────────────────────
+    const [users, setUsers] = useState([]);
+    const [usersLoading, setUsersLoading] = useState(false);
+
     // Initial Load & Seeding (with version-based migration)
     useEffect(() => {
         const storedVersion = localStorage.getItem('fsc_eudr_version');
@@ -268,7 +274,14 @@ function App() {
         if (window.lucide) {
             window.lucide.createIcons();
         }
-    }, [tab, sidebarOpen, vesselShipments, plantations]);
+    }, [tab, sidebarOpen, vesselShipments, plantations, users]);
+
+    // Load users when user-management tab is first opened (admin only)
+    useEffect(() => {
+        if (tab === 'user-management' && users.length === 0) {
+            loadUsers();
+        }
+    }, [tab]);
 
     // ─── Session Validation on Mount (Phase 1) ────────────────────────────────
     useEffect(() => {
@@ -541,6 +554,31 @@ function App() {
         setPlantations(updated);
     };
 
+    // ─── Phase 3: User Management Handlers ───────────────────────────────────
+    const getSessionToken = () => {
+        try { return JSON.parse(localStorage.getItem('fsc_eudr_session') || '{}').token || null; } catch { return null; }
+    };
+
+    const loadUsers = async () => {
+        setUsersLoading(true);
+        try {
+            const result = await getUsers(getSessionToken());
+            if (result.success) setUsers(result.users);
+        } finally { setUsersLoading(false); }
+    };
+
+    const handleCreateUser = async (userData) => {
+        const result = await createUser(getSessionToken(), userData);
+        if (result.success) await loadUsers();
+        return result;
+    };
+
+    const handleUpdateUser = async (userId, changes) => {
+        const result = await updateUser(getSessionToken(), userId, changes);
+        if (result.success) await loadUsers();
+        return result;
+    };
+
     // ─── Role & Display Labels ─────────────────────────────────────────────────
     // (computed after auth guards — currentUser guaranteed non-null here)
     const ROLE_LABELS = {
@@ -645,6 +683,13 @@ function App() {
                     <li>
                         <a class="nav-item ${tab === 'monthly-report' ? 'active' : ''}" onClick=${() => { setTab('monthly-report'); closeNav(); }}>
                             <${Icon} name="bar-chart-2" /> รายงานรายเดือน
+                        </a>
+                    </li>
+                    `}
+                    ${roleLevel >= 5 && html`
+                    <li>
+                        <a class="nav-item ${tab === 'user-management' ? 'active' : ''}" onClick=${() => { setTab('user-management'); closeNav(); }}>
+                            <${Icon} name="users" /> จัดการผู้ใช้งาน
                         </a>
                     </li>
                     `}
@@ -771,6 +816,17 @@ function App() {
                         plantations=${plantations}
                         shipments=${shipments}
                         vesselShipments=${vesselShipments}
+                    />
+                `}
+
+                ${tab === 'user-management' && roleLevel >= 5 && html`
+                    <${UserManagement}
+                        currentUser=${currentUser}
+                        users=${users}
+                        usersLoading=${usersLoading}
+                        onCreateUser=${handleCreateUser}
+                        onUpdateUser=${handleUpdateUser}
+                        onRefresh=${loadUsers}
                     />
                 `}
             </main>

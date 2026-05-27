@@ -24,6 +24,9 @@ function doPost(e) {
       case 'login':          result = handleLogin(data);         break;
       case 'validateToken':  result = handleValidateToken(data); break;
       case 'logout':         result = handleLogout(data);        break;
+      case 'getUsers':       result = handleGetUsers(data);      break;
+      case 'createUser':     result = handleCreateUser(data);    break;
+      case 'updateUser':     result = handleUpdateUser(data);    break;
       default:
         result = { success: false, message: 'Unknown action: ' + data.action };
     }
@@ -203,6 +206,87 @@ function logAudit(ss, userId, userName, action, table, recordId, oldVal, newVal)
     userId, userName, action, table, recordId,
     JSON.stringify(oldVal), JSON.stringify(newVal)
   ]);
+}
+
+// ─── Handle Get Users (Phase 3) ───────────────────────────────────────────────
+function handleGetUsers(data) {
+  const { token } = data;
+  const requester = requireRole(token, 5); // admin only
+  if (!requester.success) return requester;
+
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const rows = ss.getSheetByName('Users').getDataRange().getValues();
+  const h = rows[0];
+  const users = [];
+  for (let i = 1; i < rows.length; i++) {
+    users.push({
+      id: rows[i][h.indexOf('id')], username: rows[i][h.indexOf('username')],
+      fullName: rows[i][h.indexOf('full_name')], role: rows[i][h.indexOf('role')],
+      roleLevel: rows[i][h.indexOf('role_level')], department: rows[i][h.indexOf('department')],
+      active: rows[i][h.indexOf('active')], createdBy: rows[i][h.indexOf('created_by')],
+      createdAt: rows[i][h.indexOf('created_at')]
+    });
+  }
+  return { success: true, users };
+}
+
+// ─── Handle Create User (Phase 3) ────────────────────────────────────────────
+function handleCreateUser(data) {
+  const { token } = data;
+  const requester = requireRole(token, 5);
+  if (!requester.success) return requester;
+  if (data.roleLevel >= requester.user.roleLevel) {
+    return { success: false, message: 'ไม่สามารถสร้างผู้ใช้ที่มี role สูงกว่าหรือเท่ากับตนเองได้' };
+  }
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('Users');
+  const rows = sheet.getDataRange().getValues();
+  const h = rows[0];
+  // Check duplicate username
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][h.indexOf('username')] === data.username) {
+      return { success: false, message: `ชื่อผู้ใช้ "${data.username}" มีในระบบอยู่แล้ว` };
+    }
+  }
+  const newId = 'USR-' + String(rows.length).padStart(6, '0');
+  sheet.appendRow([newId, data.username, hashPassword(data.password), data.fullName,
+    data.role, data.roleLevel, data.department, true, data.createdBy, new Date().toISOString()]);
+  logAudit(ss, requester.user.id, requester.user.fullName, 'CREATE_USER', 'Users', newId, '', data.username);
+  return { success: true, userId: newId };
+}
+
+// ─── Handle Update User (Phase 3) ────────────────────────────────────────────
+function handleUpdateUser(data) {
+  const { token } = data;
+  const requester = requireRole(token, 5);
+  if (!requester.success) return requester;
+
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('Users');
+  const rows = sheet.getDataRange().getValues();
+  const h = rows[0];
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][h.indexOf('id')] === data.userId) {
+      if (data.fullName  !== undefined) sheet.getRange(i + 1, h.indexOf('full_name') + 1).setValue(data.fullName);
+      if (data.department !== undefined) sheet.getRange(i + 1, h.indexOf('department') + 1).setValue(data.department);
+      if (data.role      !== undefined) sheet.getRange(i + 1, h.indexOf('role') + 1).setValue(data.role);
+      if (data.roleLevel !== undefined) sheet.getRange(i + 1, h.indexOf('role_level') + 1).setValue(data.roleLevel);
+      if (data.active    !== undefined) sheet.getRange(i + 1, h.indexOf('active') + 1).setValue(data.active);
+      if (data.password  !== undefined) sheet.getRange(i + 1, h.indexOf('password_hash') + 1).setValue(hashPassword(data.password));
+      logAudit(ss, requester.user.id, requester.user.fullName, 'UPDATE_USER', 'Users', data.userId, '', '');
+      return { success: true };
+    }
+  }
+  return { success: false, message: 'ไม่พบผู้ใช้งาน' };
+}
+
+// ─── Helper: Require Role Level ───────────────────────────────────────────────
+function requireRole(token, minLevel) {
+  const v = handleValidateToken({ token });
+  if (!v.valid) return { success: false, message: 'Session หมดอายุหรือไม่ถูกต้อง' };
+  if ((v.user.roleLevel || 0) < minLevel) return { success: false, message: 'ไม่มีสิทธิ์เข้าถึงข้อมูลนี้' };
+  return { success: true, user: v.user };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

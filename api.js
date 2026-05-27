@@ -65,8 +65,31 @@ const DEMO_USERS = {
     },
 };
 
-// Map token → username (in-memory session store for demo mode)
+// Map token → user object (in-memory session store for demo mode)
 const DEMO_SESSIONS = {};
+
+// ─── Demo User Storage Helpers (Phase 3) ─────────────────────────────────────
+// Users are persisted in localStorage so newly-created accounts survive refresh.
+// On first access the store is seeded from DEMO_USERS above.
+function getStoredDemoUsers() {
+    try {
+        const stored = localStorage.getItem('fsc_eudr_users');
+        if (stored) return JSON.parse(stored);
+    } catch {}
+    // First-time seed from hardcoded DEMO_USERS
+    const seeded = Object.entries(DEMO_USERS).map(([, entry]) => ({
+        ...entry.user, password: entry.password,
+        active: true, createdBy: 'system', createdAt: new Date().toISOString()
+    }));
+    localStorage.setItem('fsc_eudr_users', JSON.stringify(seeded));
+    return seeded;
+}
+function saveStoredDemoUsers(users) {
+    localStorage.setItem('fsc_eudr_users', JSON.stringify(users));
+}
+function demoUserToObj(u) {
+    return { id: u.id, username: u.username, fullName: u.fullName, role: u.role, roleLevel: u.roleLevel, department: u.department };
+}
 
 // ─── Core fetch wrapper ────────────────────────────────────────────────────────
 // Uses Content-Type: text/plain to avoid CORS preflight on Apps Script Web Apps
@@ -85,18 +108,18 @@ async function apiCall(action, data = {}) {
 export async function authLogin(username, password) {
     if (DEMO_MODE) {
         await new Promise(r => setTimeout(r, 700)); // simulate latency
-        const entry = DEMO_USERS[username];
-        if (entry && entry.password === password) {
-            const token = 'demo-' + username + '-' + Date.now();
-            DEMO_SESSIONS[token] = username;
-            return {
-                success: true,
-                token,
-                user: entry.user,
-                expiresAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
-            };
-        }
-        return { success: false, message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+        const users = getStoredDemoUsers();
+        const u = users.find(u => u.username === username);
+        if (!u) return { success: false, message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+        if (!u.active) return { success: false, message: 'บัญชีผู้ใช้นี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' };
+        if (u.password !== password) return { success: false, message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+        const token = 'demo-' + username + '-' + Date.now();
+        const userObj = demoUserToObj(u);
+        DEMO_SESSIONS[token] = userObj;
+        return {
+            success: true, token, user: userObj,
+            expiresAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+        };
     }
     return apiCall('login', { username, password });
 }
@@ -105,20 +128,18 @@ export async function authLogin(username, password) {
 export async function authValidateToken(token) {
     if (DEMO_MODE) {
         if (!token || !token.startsWith('demo-')) return { valid: false };
-        // Try in-memory session first (same page load)
-        const username = DEMO_SESSIONS[token];
-        if (username && DEMO_USERS[username]) {
-            return { valid: true, user: DEMO_USERS[username].user };
-        }
-        // Token from previous page load — extract username from token format
-        // Format: demo-<username>-<timestamp>
+        // In-memory session hit (same page load)
+        if (DEMO_SESSIONS[token]) return { valid: true, user: DEMO_SESSIONS[token] };
+        // Re-hydrate from token format: demo-<username>-<timestamp>
         const parts = token.split('-');
         if (parts.length >= 3) {
-            // username is everything between first and last segment
             const uname = parts.slice(1, -1).join('-');
-            if (DEMO_USERS[uname]) {
-                DEMO_SESSIONS[token] = uname;
-                return { valid: true, user: DEMO_USERS[uname].user };
+            const users = getStoredDemoUsers();
+            const u = users.find(u => u.username === uname && u.active);
+            if (u) {
+                const userObj = demoUserToObj(u);
+                DEMO_SESSIONS[token] = userObj;
+                return { valid: true, user: userObj };
             }
         }
         return { valid: false };
@@ -141,4 +162,63 @@ export async function authLogout(token) {
     } catch {
         return { success: true }; // Silent fail — session already cleared client-side
     }
+}
+
+// ─── Users: Get All (Phase 3) ─────────────────────────────────────────────────
+export async function getUsers(token) {
+    if (DEMO_MODE) {
+        const users = getStoredDemoUsers();
+        return {
+            success: true,
+            users: users.map(u => ({
+                id: u.id, username: u.username, fullName: u.fullName,
+                role: u.role, roleLevel: u.roleLevel, department: u.department,
+                active: u.active, createdBy: u.createdBy, createdAt: u.createdAt
+            }))
+        };
+    }
+    return apiCall('getUsers', { token });
+}
+
+// ─── Users: Create (Phase 3) ──────────────────────────────────────────────────
+export async function createUser(token, userData) {
+    if (DEMO_MODE) {
+        const users = getStoredDemoUsers();
+        if (users.find(u => u.username === userData.username)) {
+            return { success: false, message: `ชื่อผู้ใช้ "${userData.username}" มีในระบบอยู่แล้ว` };
+        }
+        const maxNum = users.reduce((max, u) => {
+            const n = parseInt(u.id.replace('USR-', '')) || 0;
+            return n > max ? n : max;
+        }, 0);
+        const newId = 'USR-' + String(maxNum + 1).padStart(6, '0');
+        users.push({
+            id: newId,
+            username: userData.username,
+            password: userData.password,
+            fullName: userData.fullName,
+            role: userData.role,
+            roleLevel: userData.roleLevel,
+            department: userData.department,
+            active: true,
+            createdBy: userData.createdBy || 'admin',
+            createdAt: new Date().toISOString()
+        });
+        saveStoredDemoUsers(users);
+        return { success: true, userId: newId };
+    }
+    return apiCall('createUser', { token, ...userData });
+}
+
+// ─── Users: Update (Phase 3) ──────────────────────────────────────────────────
+export async function updateUser(token, userId, changes) {
+    if (DEMO_MODE) {
+        const users = getStoredDemoUsers();
+        const idx = users.findIndex(u => u.id === userId);
+        if (idx === -1) return { success: false, message: 'ไม่พบผู้ใช้งาน' };
+        users[idx] = { ...users[idx], ...changes };
+        saveStoredDemoUsers(users);
+        return { success: true };
+    }
+    return apiCall('updateUser', { token, userId, ...changes });
 }
