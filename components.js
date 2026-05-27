@@ -56,6 +56,17 @@ function exportToCsv(filename, headers, rows) {
     URL.revokeObjectURL(url);
 }
 
+// C3: Helper — compute current lock status for a plantation plot
+// Lock period: 2 years 6 months = 912 days
+function getPlotLockStatus(p) {
+    if (!p || !p.lockExpiryDate) return { locked: false, daysLeft: 0 };
+    const now = new Date();
+    const expiry = new Date(p.lockExpiryDate);
+    if (now >= expiry) return { locked: false, daysLeft: 0 };
+    const daysLeft = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    return { locked: true, daysLeft };
+}
+
 // Helper component to render Lucide Icons dynamically
 export function Icon({ name, className = "" }) {
     useEffect(() => {
@@ -571,7 +582,12 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
             docAttachmentDeed: false,
             docAttachmentOwnerID: false,
             docAttachmentSaleContract: false,
-            yieldEvidenceNote: ''
+            yieldEvidenceNote: '',
+            // C3: Plot reuse lock fields
+            registeredAt: new Date().toISOString(),
+            lastUsedDate: null,
+            lockedByVesselId: null,
+            lockExpiryDate: null
         };
 
     const [form, setForm] = useState({ ...defaultPlantation });
@@ -640,6 +656,9 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
         ? !!(form.coords && form.coords.lat)
         : (Array.isArray(form.coords) && form.coords.length > 0);
     const geoMismatch = alreadyDrawnCheck && (form.geoType !== expectedGeoType);
+
+    // C3: Lock status for edit mode
+    const editLockStatus = editMode ? getPlotLockStatus(form) : { locked: false, daysLeft: 0 };
 
     // B2: HCV Risk Assessment compliance
     const hcvNonCompliant = form.hcvQ1 || !form.hcvQ2;
@@ -745,6 +764,20 @@ export function PlantationForm({ plantations, onSave, onCancel, editPlantationId
                     <${Icon} name="arrow-left" /> ย้อนกลับ
                 </button>
             </div>
+
+            ${editLockStatus.locked && html`
+                <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.4);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:center;">
+                    <span style="font-size:1.8rem;">🔒</span>
+                    <div>
+                        <div style="font-weight:700;color:#ef4444;font-size:0.95rem;">แปลงนี้อยู่ในช่วงล็อคการใช้งาน (Plot Reuse Lock)</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);margin-top:2px;">
+                            ผูกกับ Vessel DDS: <b style="color:#f59e0b;">${form.lockedByVesselId}</b> —
+                            เหลือเวลาล็อค <b style="color:#ef4444;">${editLockStatus.daysLeft}</b> วัน
+                            (หมดอายุ: ${new Date(form.lockExpiryDate).toLocaleDateString('th-TH')})
+                        </div>
+                    </div>
+                </div>
+            `}
 
             <form onSubmit=${handleSubmit}>
                 <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: start;">
@@ -1500,6 +1533,9 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
     const totalPages = Math.max(1, Math.ceil(filtered.length / PLT_PAGE_SIZE));
     const paginated = filtered.slice((page - 1) * PLT_PAGE_SIZE, page * PLT_PAGE_SIZE);
 
+    // C3: Pre-compute lock status for displayed rows
+    const lockStatuses = Object.fromEntries(paginated.map(p => [p.id, getPlotLockStatus(p)]));
+
     const handleSearch = (e) => { setSearch(e.target.value); setPage(1); };
     const handleFilter = (e) => { setStatusFilter(e.target.value); setPage(1); };
 
@@ -1623,6 +1659,11 @@ export function PlantationList({ plantations, onDelete, onEdit, setTab, setSelec
                                         <span class="badge ${p.eudrCompliant ? 'badge-success' : 'badge-danger'}">
                                             ${p.eudrCompliant ? 'Compliant' : 'Non-Compliant'}
                                         </span>
+                                        ${lockStatuses[p.id] && lockStatuses[p.id].locked && html`
+                                            <div style="font-size:0.7rem;color:#ef4444;margin-top:3px;font-weight:600;">
+                                                🔒 ล็อค ${lockStatuses[p.id].daysLeft} วัน
+                                            </div>
+                                        `}
                                     </td>
                                     <td style="text-align:right;">
                                         <div style="display:inline-flex; gap:6px;">
@@ -2389,6 +2430,369 @@ export function DdsReport({ plantations, selectedPlantationId, setTab }) {
                 </div>
 
             </div>
+        </div>
+    `;
+}
+
+// =============================================================
+// C2: Vessel Shipment System — บันทึกการส่งออกเรือ (Vessel DDS)
+// Lock period: 2 years 6 months = 912 days per plot used
+// =============================================================
+export function VesselShipment({ vesselShipments, plantations, onAddVesselShipment, onDeleteVesselShipment }) {
+    const defaultForm = {
+        vesselName: '',
+        portLoading: 'ท่าเรือแหลมฉบัง',
+        portDischarge: '',
+        billOfLading: '',
+        targetGT: '',
+    };
+    const [form, setForm] = useState({ ...defaultForm });
+    const [selectedPltIds, setSelectedPltIds] = useState([]);
+    const [showForm, setShowForm] = useState(false);
+
+    // C2: Only EUDR-compliant plots that are NOT currently locked
+    const eligiblePlots = plantations
+        .filter(p => p.eudrCompliant && !getPlotLockStatus(p).locked)
+        .sort((a, b) => parseFloat(b.estVolume) - parseFloat(a.estVolume));
+
+    const actualWeight = selectedPltIds.reduce((sum, id) => {
+        const p = plantations.find(pp => pp.id === id);
+        return sum + (p ? parseFloat(p.estVolume) || 0 : 0);
+    }, 0);
+
+    const targetGTNum = parseFloat(form.targetGT) || 0;
+    const pct = targetGTNum > 0 ? Math.min(100, Math.round(actualWeight / targetGTNum * 100)) : 0;
+    const pctColor = pct >= 100 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#ef4444';
+
+    const handleToggle = (id) => {
+        setSelectedPltIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const handleReset = () => {
+        setForm({ ...defaultForm });
+        setSelectedPltIds([]);
+        setShowForm(false);
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!form.vesselName.trim()) { alert('กรุณากรอกชื่อเรือ'); return; }
+        if (selectedPltIds.length === 0) { alert('กรุณาเลือกแปลงไม้อย่างน้อย 1 แปลง'); return; }
+
+        const vsId = 'VS-' + Math.floor(100000 + Math.random() * 900000);
+        const createdDate = new Date().toISOString();
+        const vs = {
+            id: vsId,
+            vesselName: form.vesselName.trim(),
+            portLoading: form.portLoading.trim(),
+            portDischarge: form.portDischarge.trim(),
+            billOfLading: form.billOfLading.trim(),
+            targetGT: targetGTNum,
+            actualWeight,
+            selectedPlantationIds: [...selectedPltIds],
+            createdDate,
+            status: 'active'
+        };
+        onAddVesselShipment(vs, [...selectedPltIds]);
+        handleReset();
+    };
+
+    const handleExportCsv = () => {
+        exportToCsv(
+            `vessel-shipments-${new Date().toISOString().slice(0, 10)}.csv`,
+            ['รหัส DDS', 'ชื่อเรือ', 'B/L เลขที่', 'ท่าเรือต้นทาง', 'ท่าเรือปลายทาง', 'เป้าหมาย(ตัน)', 'น้ำหนักจริง(ตัน)', 'จำนวนแปลง', 'รหัสแปลง', 'วันที่สร้าง'],
+            vesselShipments.map(vs => [
+                vs.id, vs.vesselName, vs.billOfLading || '-', vs.portLoading, vs.portDischarge || '-',
+                vs.targetGT, vs.actualWeight.toFixed(2),
+                vs.selectedPlantationIds.length, vs.selectedPlantationIds.join('; '),
+                new Date(vs.createdDate).toLocaleDateString('th-TH')
+            ])
+        );
+    };
+
+    return html`
+        <div>
+            <div class="header-actions">
+                <div class="page-title">
+                    <h1>บันทึกการส่งออกทางเรือ (Vessel DDS)</h1>
+                    <p>เชื่อมแปลงไม้กับการส่งออกผ่านเรือ — แปลงที่ใช้แล้วจะถูกล็อค 2 ปี 6 เดือน</p>
+                </div>
+                <div style="display:flex;gap:10px;">
+                    ${vesselShipments.length > 0 && html`
+                        <button class="btn btn-outline" style="font-size:0.85rem;" onClick=${handleExportCsv}>
+                            <${Icon} name="download" /> ส่งออก CSV
+                        </button>
+                    `}
+                    <button class="btn btn-primary" onClick=${() => setShowForm(!showForm)}>
+                        <${Icon} name=${showForm ? 'x' : 'plus'} /> ${showForm ? 'ยกเลิก' : 'สร้าง Vessel DDS ใหม่'}
+                    </button>
+                </div>
+            </div>
+
+            ${showForm && html`
+                <div class="form-container" style="margin-bottom:20px;">
+                    <div class="form-section-title"><${Icon} name="ship" /> รายละเอียดการส่งออก</div>
+                    <form onSubmit=${handleSubmit}>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>ชื่อเรือ <span style="color:var(--danger)">*</span></label>
+                                <input class="form-control" type="text" value=${form.vesselName}
+                                    onInput=${e => setForm(f => ({...f, vesselName: e.target.value}))}
+                                    placeholder="เช่น MV Siam Forest I" />
+                            </div>
+                            <div class="form-group">
+                                <label>B/L เลขที่ (Bill of Lading)</label>
+                                <input class="form-control" type="text" value=${form.billOfLading}
+                                    onInput=${e => setForm(f => ({...f, billOfLading: e.target.value}))}
+                                    placeholder="เช่น BL-2026-0001" />
+                            </div>
+                            <div class="form-group">
+                                <label>ท่าเรือต้นทาง</label>
+                                <input class="form-control" type="text" value=${form.portLoading}
+                                    onInput=${e => setForm(f => ({...f, portLoading: e.target.value}))} />
+                            </div>
+                            <div class="form-group">
+                                <label>ท่าเรือปลายทาง</label>
+                                <input class="form-control" type="text" value=${form.portDischarge}
+                                    onInput=${e => setForm(f => ({...f, portDischarge: e.target.value}))}
+                                    placeholder="เช่น Port of Hamburg, Germany" />
+                            </div>
+                            <div class="form-group">
+                                <label>น้ำหนักเป้าหมาย (ตัน GT)</label>
+                                <input class="form-control" type="number" min="0" step="0.1"
+                                    value=${form.targetGT}
+                                    onInput=${e => setForm(f => ({...f, targetGT: e.target.value}))} />
+                            </div>
+                            <div class="form-group">
+                                <label>น้ำหนักรวมจากแปลงที่เลือก</label>
+                                <div style="padding:10px 12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:8px;font-weight:700;font-size:1.05rem;color:var(--primary);">
+                                    ${actualWeight.toFixed(1)} ตัน
+                                    ${targetGTNum > 0 && html`
+                                        <span style="font-size:0.82rem;color:${pctColor};margin-left:8px;">(${pct}% ของเป้าหมาย)</span>
+                                    `}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section-title" style="margin-top:16px;">
+                            <${Icon} name="map-pin" /> เลือกแปลงที่จะส่งออก
+                            <span style="font-weight:400;font-size:0.82rem;color:var(--text-muted);margin-left:8px;">— แสดงเฉพาะแปลง EUDR Compliant ที่ไม่ถูกล็อค</span>
+                        </div>
+
+                        ${eligiblePlots.length === 0 ? html`
+                            <div style="padding:20px;text-align:center;color:var(--text-muted);border:1px dashed var(--border-color);border-radius:8px;">
+                                ⚠️ ไม่มีแปลงที่พร้อมใช้งาน — แปลงทั้งหมดอาจยังไม่ผ่าน EUDR หรืออยู่ในช่วงล็อค
+                            </div>
+                        ` : eligiblePlots.map(p => html`
+                            <div key=${p.id} onClick=${() => handleToggle(p.id)}
+                                style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:6px;border-radius:8px;cursor:pointer;border:1px solid ${selectedPltIds.includes(p.id) ? 'rgba(16,185,129,0.6)' : 'var(--border-color)'};background:${selectedPltIds.includes(p.id) ? 'rgba(16,185,129,0.07)' : 'transparent'};transition:all 0.15s;">
+                                <input type="checkbox" checked=${selectedPltIds.includes(p.id)} style="pointer-events:none;width:16px;height:16px;" />
+                                <div style="flex:1;">
+                                    <div style="font-weight:600;">${p.id} — แปลง ${p.plotCode}</div>
+                                    <div style="font-size:0.8rem;color:var(--text-muted);">${p.owner} | ${p.province} | พื้นที่: ${p.areaRai} ไร่ | ปริมาณ: <b>${p.estVolume}</b> ตัน</div>
+                                </div>
+                                <span class="badge ${p.fscStatus === 'FSC 100%' ? 'badge-success' : 'badge-warning'}" style="font-size:0.72rem;">${p.fscStatus}</span>
+                            </div>
+                        `)}
+
+                        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;">
+                            <button type="button" class="btn btn-outline" onClick=${handleReset}>ยกเลิก</button>
+                            <button type="submit" class="btn btn-primary">
+                                <${Icon} name="ship" /> บันทึกและล็อคแปลง (${selectedPltIds.length} แปลง)
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `}
+
+            ${vesselShipments.length === 0 && !showForm ? html`
+                <div class="form-container" style="text-align:center;padding:48px 20px;">
+                    <div style="font-size:3rem;margin-bottom:12px;">🚢</div>
+                    <div style="color:var(--text-muted);font-size:0.95rem;">ยังไม่มีรายการส่งออกเรือ<br/>คลิก "สร้าง Vessel DDS ใหม่" เพื่อเริ่มต้น</div>
+                </div>
+            ` : vesselShipments.length > 0 ? html`
+                <div class="table-container">
+                    <div style="padding:12px 16px;border-bottom:1px solid var(--border-color);font-size:0.85rem;color:var(--text-muted);">
+                        <b style="color:#fff;">${vesselShipments.length}</b> รายการส่งออกเรือ
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>รหัส DDS</th>
+                                    <th>ชื่อเรือ / B/L</th>
+                                    <th>ท่าเรือ</th>
+                                    <th>น้ำหนัก (ตัน)</th>
+                                    <th>แปลงที่ใช้</th>
+                                    <th>วันที่</th>
+                                    <th style="text-align:right;">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${vesselShipments.map(vs => html`
+                                    <tr key=${vs.id}>
+                                        <td><code style="font-size:0.8rem;color:var(--primary);">${vs.id}</code></td>
+                                        <td>
+                                            <div style="font-weight:600;">${vs.vesselName}</div>
+                                            <div style="font-size:0.75rem;color:var(--text-muted);">B/L: ${vs.billOfLading || '-'}</div>
+                                        </td>
+                                        <td>
+                                            <div style="font-size:0.82rem;">${vs.portLoading}</div>
+                                            <div style="font-size:0.75rem;color:var(--text-muted);">→ ${vs.portDischarge || '-'}</div>
+                                        </td>
+                                        <td>
+                                            <div><b>${vs.actualWeight.toFixed(1)}</b> ตัน</div>
+                                            ${vs.targetGT > 0 && html`<div style="font-size:0.75rem;color:var(--text-muted);">เป้า: ${vs.targetGT} ตัน</div>`}
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-info">${vs.selectedPlantationIds.length} แปลง</span>
+                                            <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;max-width:180px;word-break:break-all;">${vs.selectedPlantationIds.join(', ')}</div>
+                                        </td>
+                                        <td style="white-space:nowrap;font-size:0.85rem;">${new Date(vs.createdDate).toLocaleDateString('th-TH')}</td>
+                                        <td style="text-align:right;">
+                                            <button class="action-btn btn-delete" title="ลบและปลดล็อคแปลง" onClick=${() => onDeleteVesselShipment(vs.id, vs.selectedPlantationIds)}>
+                                                <${Icon} name="trash-2" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `)}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+// =============================================================
+// C1: Monthly Report — รายงานสรุปกิจกรรมรายเดือน
+// Derived from plantations + shipments + vesselShipments (no new schema key)
+// =============================================================
+export function MonthlyReport({ plantations, shipments, vesselShipments }) {
+    const vs = vesselShipments || [];
+
+    // Helper: ISO dateStr → 'YYYY-MM' key
+    const toMonthKey = (dateStr) => {
+        if (!dateStr) return null;
+        const d = new Date(dateStr);
+        return isNaN(d.getTime()) ? null : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+
+    // Thai month label
+    const thMonth = (key) => {
+        const [y, m] = key.split('-').map(Number);
+        return new Date(y, m - 1, 1).toLocaleDateString('th-TH', { year: 'numeric', month: 'long' });
+    };
+
+    // Collect all active months
+    const monthSet = new Set();
+    plantations.forEach(p => { const k = toMonthKey(p.registeredAt || p.plantDate); if (k) monthSet.add(k); });
+    shipments.forEach(s => { const k = toMonthKey(s.date); if (k) monthSet.add(k); });
+    vs.forEach(v => { const k = toMonthKey(v.createdDate); if (k) monthSet.add(k); });
+
+    const months = [...monthSet].sort().reverse(); // newest first
+
+    const handleExportCsv = () => {
+        exportToCsv(
+            `monthly-report-${new Date().toISOString().slice(0, 10)}.csv`,
+            ['เดือน', 'แปลงใหม่', 'EUDR Compliant', 'FSC 100%', 'Specified Risk', 'รายการขนส่ง(รถ)', 'น้ำหนักรถ(ตัน)', 'รายการส่งออก(เรือ)', 'น้ำหนักเรือ(ตัน)', 'น้ำหนักรวม(ตัน)'],
+            months.map(mk => {
+                const pInMonth = plantations.filter(p => toMonthKey(p.registeredAt || p.plantDate) === mk);
+                const sInMonth = shipments.filter(s => toMonthKey(s.date) === mk);
+                const vsInMonth = vs.filter(v => toMonthKey(v.createdDate) === mk);
+                const truckWT = sInMonth.reduce((a, s) => a + (parseFloat(s.weight) || 0), 0);
+                const vesselWT = vsInMonth.reduce((a, v) => a + (parseFloat(v.actualWeight) || 0), 0);
+                return [
+                    thMonth(mk),
+                    pInMonth.length,
+                    pInMonth.filter(p => p.eudrCompliant).length,
+                    pInMonth.filter(p => p.fscStatus === 'FSC 100%').length,
+                    pInMonth.filter(p => p.fscCwVerdict === 'Specified Risk').length,
+                    sInMonth.length, truckWT.toFixed(2),
+                    vsInMonth.length, vesselWT.toFixed(2),
+                    (truckWT + vesselWT).toFixed(2)
+                ];
+            })
+        );
+    };
+
+    return html`
+        <div>
+            <div class="header-actions">
+                <div class="page-title">
+                    <h1>รายงานสรุปรายเดือน</h1>
+                    <p>ภาพรวมกิจกรรมแปลงปลูก การขนส่งรถ และการส่งออกเรือ จัดกลุ่มตามเดือน</p>
+                </div>
+                ${months.length > 0 && html`
+                    <button class="btn btn-outline" style="font-size:0.85rem;" onClick=${handleExportCsv}>
+                        <${Icon} name="download" /> ส่งออก CSV
+                    </button>
+                `}
+            </div>
+
+            ${months.length === 0 ? html`
+                <div class="form-container" style="text-align:center;padding:48px 20px;">
+                    <div style="font-size:3rem;margin-bottom:12px;">📊</div>
+                    <div style="color:var(--text-muted);font-size:0.95rem;">ยังไม่มีข้อมูลเพียงพอสำหรับรายงานรายเดือน</div>
+                </div>
+            ` : months.map(mk => {
+                const pInMonth = plantations.filter(p => toMonthKey(p.registeredAt || p.plantDate) === mk);
+                const sInMonth = shipments.filter(s => toMonthKey(s.date) === mk);
+                const vsInMonth = vs.filter(v => toMonthKey(v.createdDate) === mk);
+                const truckWT = sInMonth.reduce((a, s) => a + (parseFloat(s.weight) || 0), 0);
+                const vesselWT = vsInMonth.reduce((a, v) => a + (parseFloat(v.actualWeight) || 0), 0);
+                const eudrOk = pInMonth.filter(p => p.eudrCompliant).length;
+                const fsc100 = pInMonth.filter(p => p.fscStatus === 'FSC 100%').length;
+                const specRisk = pInMonth.filter(p => p.fscCwVerdict === 'Specified Risk').length;
+
+                return html`
+                    <div key=${mk} class="form-container" style="margin-bottom:16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                            <h3 style="margin:0;font-size:1.05rem;color:var(--primary);">
+                                <${Icon} name="calendar" /> ${thMonth(mk)}
+                            </h3>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">${mk}</span>
+                        </div>
+
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:12px;">
+                            <div class="stat-card" style="padding:14px;">
+                                <div class="stat-label">แปลงที่ลงทะเบียน</div>
+                                <div class="stat-value" style="font-size:1.8rem;">${pInMonth.length}</div>
+                                <div class="stat-sub">EUDR ✅ ${eudrOk} | FSC 100% ${fsc100}${specRisk > 0 ? ` | ⚠️ ${specRisk}` : ''}</div>
+                            </div>
+                            <div class="stat-card" style="padding:14px;">
+                                <div class="stat-label">การขนส่ง (รถ)</div>
+                                <div class="stat-value" style="font-size:1.8rem;">${sInMonth.length}</div>
+                                <div class="stat-sub">${truckWT.toFixed(1)} ตัน</div>
+                            </div>
+                            <div class="stat-card" style="padding:14px;">
+                                <div class="stat-label">การส่งออก (เรือ)</div>
+                                <div class="stat-value" style="font-size:1.8rem;">${vsInMonth.length}</div>
+                                <div class="stat-sub">${vesselWT.toFixed(1)} ตัน</div>
+                            </div>
+                            <div class="stat-card" style="padding:14px;border-color:rgba(16,185,129,0.4);">
+                                <div class="stat-label">น้ำหนักรวมทั้งเดือน</div>
+                                <div class="stat-value" style="font-size:1.8rem;color:var(--primary);">${(truckWT + vesselWT).toFixed(1)}</div>
+                                <div class="stat-sub">ตัน (รถ + เรือ)</div>
+                            </div>
+                        </div>
+
+                        ${sInMonth.length > 0 && html`
+                            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">
+                                📦 รายการขนส่งรถ: ${sInMonth.map(s => s.id).join(', ')}
+                            </div>
+                        `}
+                        ${vsInMonth.length > 0 && html`
+                            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
+                                🚢 รายการส่งออกเรือ: ${vsInMonth.map(v => v.id + ' (' + v.vesselName + ')').join(', ')}
+                            </div>
+                        `}
+                    </div>
+                `;
+            })}
         </div>
     `;
 }

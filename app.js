@@ -8,15 +8,17 @@ import {
     PlantationList,
     CocLedger,
     DdsReport,
-    TimberDeliveryNote
+    TimberDeliveryNote,
+    VesselShipment,
+    MonthlyReport
 } from './components.js';
 
 const html = htm.bind(h);
 
 // App data version — bump this to clear localStorage on schema changes
-// v2.2: A2 Customer ID user-entered, B1 species Eucalyptus-only, B2 HCV 6-question risk assessment,
-//        B3 targetMill field, A7 deliveryNote→DO user-entered
-const APP_VERSION = '2.2';
+// v2.2: A2 Customer ID, B1 Eucalyptus species, B2 HCV 6-question, B3 targetMill, A7 DO user-entered
+// v2.3: C1 Monthly Report, C2 Vessel Shipment, C3 Plot Reuse Lock (912-day lock + registeredAt)
+const APP_VERSION = '2.3';
 
 // Seed Data (new schema: id=FSC-xxxxxx, plotCode=3-digit string)
 const SEED_PLANTATIONS = [
@@ -57,7 +59,11 @@ const SEED_PLANTATIONS = [
         fscCwVerdict: 'Low Risk',
         eudrCompliant: true,
         eudrWarning: '',
-        fscStatus: 'FSC 100%'
+        fscStatus: 'FSC 100%',
+        registeredAt: '2026-03-10T08:00:00.000Z',
+        lastUsedDate: null,
+        lockedByVesselId: null,
+        lockExpiryDate: null
     },
     {
         id: 'FSC-090222',
@@ -101,7 +107,11 @@ const SEED_PLANTATIONS = [
         fscCwVerdict: 'Low Risk',
         eudrCompliant: true,
         eudrWarning: '',
-        fscStatus: 'FSC Controlled Wood'
+        fscStatus: 'FSC Controlled Wood',
+        registeredAt: '2026-04-05T09:00:00.000Z',
+        lastUsedDate: null,
+        lockedByVesselId: null,
+        lockExpiryDate: null
     },
     {
         id: 'FSC-030441',
@@ -144,9 +154,16 @@ const SEED_PLANTATIONS = [
         fscCwVerdict: 'Specified Risk',
         eudrCompliant: false,
         eudrWarning: 'แปลงอยู่ในเขตป่าสงวนหรือพื้นที่คุ้มครองตามกฎหมาย (ข้อ 3.1)',
-        fscStatus: 'FSC Controlled Wood'
+        fscStatus: 'FSC Controlled Wood',
+        registeredAt: '2026-05-01T10:00:00.000Z',
+        lastUsedDate: null,
+        lockedByVesselId: null,
+        lockExpiryDate: null
     }
 ];
+
+// Seed Vessel Shipments (empty by default — users create their own)
+const SEED_VESSEL_SHIPMENTS = [];
 
 const SEED_SHIPMENTS = [
     {
@@ -183,6 +200,7 @@ function App() {
     const [tab, setTab] = useState('dashboard');
     const [plantations, setPlantations] = useState([]);
     const [shipments, setShipments] = useState([]);
+    const [vesselShipments, setVesselShipments] = useState([]); // C2
     const [editPlantationId, setEditPlantationId] = useState(null);
     const [selectedPlantationId, setSelectedPlantationId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -195,11 +213,14 @@ function App() {
             localStorage.setItem('fsc_eudr_version', APP_VERSION);
             localStorage.setItem('fsc_eudr_plantations', JSON.stringify(SEED_PLANTATIONS));
             localStorage.setItem('fsc_eudr_shipments', JSON.stringify(SEED_SHIPMENTS));
+            localStorage.setItem('fsc_eudr_vessel_shipments', JSON.stringify(SEED_VESSEL_SHIPMENTS));
             setPlantations(SEED_PLANTATIONS);
             setShipments(SEED_SHIPMENTS);
+            setVesselShipments(SEED_VESSEL_SHIPMENTS);
         } else {
             const storedPlt = localStorage.getItem('fsc_eudr_plantations');
             const storedShip = localStorage.getItem('fsc_eudr_shipments');
+            const storedVS = localStorage.getItem('fsc_eudr_vessel_shipments');
             if (storedPlt) {
                 setPlantations(JSON.parse(storedPlt));
             } else {
@@ -212,6 +233,12 @@ function App() {
                 localStorage.setItem('fsc_eudr_shipments', JSON.stringify(SEED_SHIPMENTS));
                 setShipments(SEED_SHIPMENTS);
             }
+            if (storedVS) {
+                setVesselShipments(JSON.parse(storedVS));
+            } else {
+                localStorage.setItem('fsc_eudr_vessel_shipments', JSON.stringify(SEED_VESSEL_SHIPMENTS));
+                setVesselShipments(SEED_VESSEL_SHIPMENTS);
+            }
         }
     }, []);
 
@@ -219,7 +246,7 @@ function App() {
         if (window.lucide) {
             window.lucide.createIcons();
         }
-    }, [tab, sidebarOpen]);
+    }, [tab, sidebarOpen, vesselShipments, plantations]);
 
     // Save Plantation
     const savePlantation = (data) => {
@@ -271,13 +298,66 @@ function App() {
         }
     };
 
+    // C3: Lock selected plots when assigned to a vessel shipment
+    const lockPlots = (plotIds, vesselId, createdDate) => {
+        const lockExpiry = new Date(createdDate);
+        lockExpiry.setDate(lockExpiry.getDate() + 912); // 2 years 6 months ≈ 912 days
+        const updated = plantations.map(p => {
+            if (plotIds.includes(p.id)) {
+                return {
+                    ...p,
+                    lastUsedDate: createdDate,
+                    lockedByVesselId: vesselId,
+                    lockExpiryDate: lockExpiry.toISOString()
+                };
+            }
+            return p;
+        });
+        localStorage.setItem('fsc_eudr_plantations', JSON.stringify(updated));
+        setPlantations(updated);
+    };
+
+    // C3: Unlock plots when vessel shipment is deleted
+    const unlockPlots = (plotIds) => {
+        const updated = plantations.map(p => {
+            if (plotIds.includes(p.id)) {
+                return { ...p, lastUsedDate: null, lockedByVesselId: null, lockExpiryDate: null };
+            }
+            return p;
+        });
+        localStorage.setItem('fsc_eudr_plantations', JSON.stringify(updated));
+        setPlantations(updated);
+    };
+
+    // C2: Add Vessel Shipment + trigger C3 plot lock
+    const addVesselShipment = (data, plotIds) => {
+        const updated = [...vesselShipments, data];
+        localStorage.setItem('fsc_eudr_vessel_shipments', JSON.stringify(updated));
+        setVesselShipments(updated);
+        lockPlots(plotIds, data.id, data.createdDate);
+        alert(`บันทึก Vessel DDS สำเร็จ! (${data.id})\n🔒 ล็อคแปลงที่เลือก ${plotIds.length} แปลง เป็นเวลา 912 วัน`);
+    };
+
+    // C2: Delete Vessel Shipment + unlock plots
+    const deleteVesselShipment = (id, plotIds) => {
+        if (confirm('ยืนยันการลบ Vessel DDS นี้?\n🔓 แปลงที่ผูกอยู่จะถูกปลดล็อคโดยอัตโนมัติ')) {
+            const updated = vesselShipments.filter(vs => vs.id !== id);
+            localStorage.setItem('fsc_eudr_vessel_shipments', JSON.stringify(updated));
+            setVesselShipments(updated);
+            if (plotIds && plotIds.length > 0) {
+                unlockPlots(plotIds);
+            }
+        }
+    };
+
     // Export all data as JSON backup
     const exportAllData = () => {
         const data = {
             version: APP_VERSION,
             exportDate: new Date().toISOString(),
             plantations,
-            shipments
+            shipments,
+            vesselShipments
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -299,13 +379,17 @@ function App() {
             try {
                 const data = JSON.parse(evt.target.result);
                 if (Array.isArray(data.plantations) && Array.isArray(data.shipments)) {
-                    if (confirm(`นำเข้าข้อมูล ${data.plantations.length} แปลงปลูก และ ${data.shipments.length} รายการขนส่ง?\n⚠️ ข้อมูลปัจจุบันในระบบจะถูกแทนที่ทั้งหมด`)) {
+                    const vsCount = Array.isArray(data.vesselShipments) ? data.vesselShipments.length : 0;
+                    if (confirm(`นำเข้าข้อมูล ${data.plantations.length} แปลงปลูก, ${data.shipments.length} รายการขนส่ง และ ${vsCount} รายการส่งออกเรือ?\n⚠️ ข้อมูลปัจจุบันในระบบจะถูกแทนที่ทั้งหมด`)) {
                         localStorage.setItem('fsc_eudr_plantations', JSON.stringify(data.plantations));
                         localStorage.setItem('fsc_eudr_shipments', JSON.stringify(data.shipments));
+                        const vsData = Array.isArray(data.vesselShipments) ? data.vesselShipments : [];
+                        localStorage.setItem('fsc_eudr_vessel_shipments', JSON.stringify(vsData));
                         localStorage.setItem('fsc_eudr_version', APP_VERSION);
                         setPlantations(data.plantations);
                         setShipments(data.shipments);
-                        alert(`นำเข้าข้อมูลสำเร็จ! (${data.plantations.length} แปลง, ${data.shipments.length} รายการขนส่ง)`);
+                        setVesselShipments(vsData);
+                        alert(`นำเข้าข้อมูลสำเร็จ! (${data.plantations.length} แปลง, ${data.shipments.length} รายการขนส่ง, ${vsCount} Vessel DDS)`);
                     }
                 } else {
                     alert('รูปแบบไฟล์ไม่ถูกต้อง กรุณาใช้ไฟล์สำรองข้อมูล (.json) จากระบบนี้เท่านั้น');
@@ -370,6 +454,16 @@ function App() {
                     <li>
                         <a class="nav-item ${tab === 'dds-report' ? 'active' : ''}" onClick=${() => { setTab('dds-report'); closeNav(); }}>
                             <${Icon} name="file-text" /> รายงาน Due Diligence
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-item ${tab === 'vessel-shipment' ? 'active' : ''}" onClick=${() => { setTab('vessel-shipment'); closeNav(); }}>
+                            <${Icon} name="ship" /> ส่งออกทางเรือ (Vessel DDS)
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-item ${tab === 'monthly-report' ? 'active' : ''}" onClick=${() => { setTab('monthly-report'); closeNav(); }}>
+                            <${Icon} name="bar-chart-2" /> รายงานรายเดือน
                         </a>
                     </li>
                 </ul>
@@ -452,6 +546,23 @@ function App() {
                         plantations=${plantations}
                         selectedPlantationId=${selectedPlantationId}
                         setTab=${setTab}
+                    />
+                `}
+
+                ${tab === 'vessel-shipment' && html`
+                    <${VesselShipment}
+                        vesselShipments=${vesselShipments}
+                        plantations=${plantations}
+                        onAddVesselShipment=${addVesselShipment}
+                        onDeleteVesselShipment=${deleteVesselShipment}
+                    />
+                `}
+
+                ${tab === 'monthly-report' && html`
+                    <${MonthlyReport}
+                        plantations=${plantations}
+                        shipments=${shipments}
+                        vesselShipments=${vesselShipments}
                     />
                 `}
             </main>
